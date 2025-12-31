@@ -28,7 +28,7 @@
 
 ### 4. Technical Stack
 - **Packages**: `flutter_highlight`, `google_fonts`, `flutter_json_view`, `flutter/services`
-- **State Management**: `Provider` or `ValueNotifier`/`StatefulWidget`
+- **State Management**: `Riverpod` (flutter_riverpod)
 - **Code Quality**: Modular, well-commented, follows Flutter best practices
 
 ---
@@ -55,7 +55,7 @@ lib/
 │       ├── models/
 │       │   └── json_result.dart # JSON parsing result model
 │       ├── providers/
-│       │   └── json_analyzer_provider.dart # State management
+│       │   └── json_analyzer_provider.dart # Riverpod state management
 │       ├── widgets/
 │       │   ├── json_input_area.dart    # Input text field
 │       │   ├── json_output_area.dart   # Output display
@@ -280,45 +280,76 @@ Widget _buildInputArea() {
 }
 ```
 
-### 2. State Management
+### 2. State Management with Riverpod
 
-#### Use `ValueNotifier` for Simple State
+#### Define State Class
 ```dart
-class JsonAnalyzerProvider extends ChangeNotifier {
-  String _input = '';
-  String _output = '';
-  bool _isValid = false;
-  String _errorMessage = '';
+@immutable
+class JsonAnalyzerState {
+  final String input;
+  final String output;
+  final bool isValid;
+  final String errorMessage;
   
-  String get input => _input;
-  String get output => _output;
-  bool get isValid => _isValid;
-  String get errorMessage => _errorMessage;
+  const JsonAnalyzerState({
+    this.input = '',
+    this.output = '',
+    this.isValid = false,
+    this.errorMessage = '',
+  });
   
-  void updateInput(String value) {
-    _input = value;
-    _validateAndFormat();
-    notifyListeners();
+  JsonAnalyzerState copyWith({
+    String? input,
+    String? output,
+    bool? isValid,
+    String? errorMessage,
+  }) {
+    return JsonAnalyzerState(
+      input: input ?? this.input,
+      output: output ?? this.output,
+      isValid: isValid ?? this.isValid,
+      errorMessage: errorMessage ?? this.errorMessage,
+    );
   }
 }
 ```
 
-#### Avoid Unnecessary Rebuilds
+#### Create Notifier
 ```dart
-// ✅ Good - Only rebuild what's needed
-Consumer<JsonAnalyzerProvider>(
-  builder: (context, provider, child) {
-    return Text(provider.output);
-  },
-)
+class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
+  JsonAnalyzerNotifier() : super(const JsonAnalyzerState());
+  
+  void updateInput(String value) {
+    state = state.copyWith(input: value);
+    _validateAndFormat();
+  }
+}
 
-// Or use Selector for specific properties
-Selector<JsonAnalyzerProvider, bool>(
-  selector: (_, provider) => provider.isValid,
-  builder: (_, isValid, __) {
-    return ValidationIndicator(isValid: isValid);
-  },
-)
+// Define provider
+final jsonAnalyzerProvider = 
+    StateNotifierProvider<JsonAnalyzerNotifier, JsonAnalyzerState>(
+  (ref) => JsonAnalyzerNotifier(),
+);
+```
+
+#### Consume State in Widgets
+```dart
+// ✅ Good - Use ConsumerWidget
+class JsonOutputArea extends ConsumerWidget {
+  const JsonOutputArea({super.key});
+  
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final output = ref.watch(jsonAnalyzerProvider.select((s) => s.output));
+    return Text(output);
+  }
+}
+
+// ✅ Good - Use ref.watch with select for specific properties
+final isValid = ref.watch(jsonAnalyzerProvider.select((s) => s.isValid));
+
+// ✅ Good - Use ref.read for actions (don't rebuild on change)
+ref.read(jsonAnalyzerProvider.notifier).updateInput(value);
 ```
 
 ### 3. Avoid Deprecated APIs
