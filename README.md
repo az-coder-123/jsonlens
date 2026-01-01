@@ -35,11 +35,14 @@ _Showcase: concise, professional visual overview of key UI flows._
 | ![Input area and toolbar](screenshots/input-area-toolbar.png) | ![Tree view expanded](screenshots/tree-view-expanded.png) |
 | Quick editing, formatting, and clipboard actions. | Lazy, virtualized tree for exploring large JSON documents. |
 
-| About dialog & Version banner | More screenshots |
+| Path Query Panel | Statistics Panel |
 |---|---|
-| ![About dialog and version banner](screenshots/about-version-banner.png) | For additional images see the `/screenshots` folder in the repository. |
+| ![Path query panel](screenshots/path-query.png) | ![Statistics panel](screenshots/statistics.png) |
+| Query JSON paths and filter results. | View JSON statistics and metrics at a glance. |
 
 ---
+
+**Note:** For additional images see the `/screenshots` folder in the repository.
 
 ## 🛠️ Requirements
 - Flutter SDK (stable)
