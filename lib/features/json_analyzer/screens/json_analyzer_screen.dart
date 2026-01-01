@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../version_check/version_banner.dart';
+import '../../version_check/version_notifier.dart';
 import '../providers/json_analyzer_provider.dart';
 import '../widgets/advanced_toolbar.dart';
 import '../widgets/json_compare_panel.dart';
@@ -40,6 +42,12 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
     _outputTabController = TabController(length: 2, vsync: this);
     _toolsTabController = TabController(length: 4, vsync: this);
     _outputTabController.addListener(_onTabChanged);
+
+    // Trigger a background version check (non-blocking)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // ignore: unused_result
+      ref.read(versionNotifierProvider.notifier).checkForUpdateIfConnected();
+    });
   }
 
   @override
@@ -89,7 +97,12 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: _buildAppBar(),
-      body: _buildBody(),
+      body: Stack(
+        children: [
+          _buildBody(),
+          const VersionBanner(),
+        ],
+      ),
       bottomNavigationBar: const ValidationIndicator(),
     );
   }
