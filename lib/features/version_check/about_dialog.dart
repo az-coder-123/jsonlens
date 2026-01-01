@@ -37,7 +37,7 @@ class _AboutAppDialogState extends ConsumerState<AboutAppDialog> {
   Widget build(BuildContext context) {
     final state = ref.watch(versionNotifierProvider);
 
-    final latest = state.info?.latestVersion ?? '—';
+    final latest = state.info?.version ?? '—';
     final notes = state.info?.releaseNotes ?? 'No release notes available.';
 
     return AlertDialog(

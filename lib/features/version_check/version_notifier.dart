@@ -1,8 +1,8 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/constants/app_version.dart';
 import 'version_info.dart';
 import 'version_service.dart';
 
@@ -58,7 +58,7 @@ class VersionNotifier extends StateNotifier<VersionState> {
         state = state.copyWith(
           info: info,
           checking: false,
-          hasNew: await _isNewer(info),
+          hasNew: _isNewer(info),
         );
       }
     }
@@ -83,7 +83,7 @@ class VersionNotifier extends StateNotifier<VersionState> {
       final info = await _service.fetchLatest();
       if (info != null) {
         await _saveToCache(info);
-        final isNew = await _isNewer(info);
+        final isNew = _isNewer(info);
         state = state.copyWith(info: info, checking: false, hasNew: isNew);
       } else {
         state = state.copyWith(checking: false);
@@ -108,11 +108,16 @@ class VersionNotifier extends StateNotifier<VersionState> {
     return 0;
   }
 
-  Future<bool> _isNewer(VersionInfo info) async {
+  bool _isNewer(VersionInfo info) {
     try {
-      final pkg = await PackageInfo.fromPlatform();
-      final current = pkg.version;
-      return compareVersions(info.latestVersion, current) > 0;
+      // Only compare numeric latestVersion from server with AppVersion.current()
+      final serverAsInt = int.tryParse(info.version);
+      if (serverAsInt != null && serverAsInt > 0) {
+        final currentBuild = AppVersion.current();
+        return serverAsInt > currentBuild;
+      }
+      // If server latestVersion is not an integer, treat as not newer
+      return false;
     } catch (_) {
       return false;
     }

@@ -18,7 +18,7 @@ class VersionBanner extends ConsumerWidget {
     // Do not render if no new version
     if (state.info == null || !state.hasNew) return const SizedBox.shrink();
 
-    final text = 'New version ${state.info!.latestVersion} available';
+    final text = 'New version ${state.info!.version} available';
 
     return Positioned(
       right: AppDimensions.paddingM,
@@ -37,7 +37,7 @@ class VersionBanner extends ConsumerWidget {
               showDialog<void>(
                 context: context,
                 builder: (context) => AlertDialog(
-                  title: Text('New version ${state.info!.latestVersion}'),
+                  title: Text('New version ${state.info!.version}'),
                   content: SingleChildScrollView(
                     child: Text(state.info!.releaseNotes),
                   ),

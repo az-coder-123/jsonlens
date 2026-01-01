@@ -1,13 +1,13 @@
 import 'dart:convert';
 
 class VersionInfo {
-  final String latestVersion;
+  final String version;
   final String releaseNotes;
   final String? downloadAt;
   final DateTime? createdAt;
 
   VersionInfo({
-    required this.latestVersion,
+    required this.version,
     required this.releaseNotes,
     this.downloadAt,
     this.createdAt,
@@ -15,7 +15,7 @@ class VersionInfo {
 
   factory VersionInfo.fromJson(Map<String, dynamic> json) {
     return VersionInfo(
-      latestVersion: json['latest_version']?.toString() ?? '',
+      version: json['version']?.toString() ?? '',
       releaseNotes: json['release_notes']?.toString() ?? '',
       downloadAt: json['download_at']?.toString(),
       createdAt: json['created_at'] != null
@@ -25,7 +25,7 @@ class VersionInfo {
   }
 
   Map<String, dynamic> toJson() => {
-    'latest_version': latestVersion,
+    'version': version,
     'release_notes': releaseNotes,
     'download_at': downloadAt,
     'created_at': createdAt?.toIso8601String(),

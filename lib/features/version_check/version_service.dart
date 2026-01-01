@@ -7,7 +7,7 @@ import 'version_info.dart';
 class VersionService {
   // Supplied API (Supabase REST)
   static const _endpoint =
-      "https://lezadwcqeaufwdnxntoe.supabase.co/rest/v1/jsonlens?select=latest_version,release_notes,%20download_at,created_at&order=latest_version.desc&limit=1";
+      "https://lezadwcqeaufwdnxntoe.supabase.co/rest/v1/jsonlens?select=version,release_notes,%20download_at,created_at&order=version.desc&limit=1";
   // Provided key (public) — in a real app use a server-side proxy or secured key
   static const _apiKey = 'sb_publishable_yPx-x3qexCa56EMkbtw0mw_6b8ma8Tc';
 
