@@ -1,5 +1,7 @@
 # jsonlens 🔎📁
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 **JSONLens** — A professional Flutter application for analyzing, formatting, and exploring JSON (Dark Mode by default).
 
 ## 🚀 Key Features
@@ -183,4 +185,4 @@ flutter run --profile
 - Open clear pull requests with descriptions and screenshots when UI changes occur.
 
 ## 📖 License
-Add a `LICENSE` file (for example, MIT) if you intend to publish the project under an open-source license.
+This project is licensed under the **MIT License** — see the [LICENSE](./LICENSE) file for details.
