@@ -46,8 +46,11 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
 
     // Trigger a background version check (non-blocking)
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Force a network version check on every cold launch (non-blocking)
       // ignore: unused_result
-      ref.read(versionNotifierProvider.notifier).checkForUpdateIfConnected();
+      ref
+          .read(versionNotifierProvider.notifier)
+          .checkForUpdateIfConnected(force: true);
     });
   }
 

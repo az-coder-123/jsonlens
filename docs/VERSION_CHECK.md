@@ -8,7 +8,7 @@ This document explains how the **Version Check** feature works in JSONLens, how 
 - Cache results to avoid repeated requests on each launch.
 
 ## High-level flow
-1. On app startup (post-frame) and when manually triggered, the app attempts a version check.
+1. On app startup (post-frame) the app will force a network version check (non-blocking). It also checks when manually triggered (e.g., from About).
 2. The app first verifies network connectivity. If offline, the check is skipped.
 3. If cached data exists and is fresh (TTL: 1 hour by default), the cached result is used.
 4. When a new version is detected, the app shows a small single-line banner in the bottom-right with a message like: `New version 1.2.3 available`.
