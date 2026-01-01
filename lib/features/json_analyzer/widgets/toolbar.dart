@@ -34,13 +34,17 @@ class Toolbar extends ConsumerWidget {
           _ToolbarButton(
             icon: Icons.format_align_left,
             label: AppStrings.format,
-            onPressed: isValid && !isEmpty ? () => _handleFormat(ref) : null,
+            onPressed: isValid && !isEmpty
+                ? () async => await _handleFormat(ref)
+                : null,
           ),
           const SizedBox(width: AppDimensions.paddingS),
           _ToolbarButton(
             icon: Icons.compress,
             label: AppStrings.minify,
-            onPressed: isValid && !isEmpty ? () => _handleMinify(ref) : null,
+            onPressed: isValid && !isEmpty
+                ? () async => await _handleMinify(ref)
+                : null,
           ),
           const SizedBox(width: AppDimensions.paddingS),
           _ToolbarButton(
@@ -67,13 +71,13 @@ class Toolbar extends ConsumerWidget {
     );
   }
 
-  void _handleFormat(WidgetRef ref) {
-    ref.read(jsonAnalyzerProvider.notifier).format();
+  Future<void> _handleFormat(WidgetRef ref) async {
+    await ref.read(jsonAnalyzerProvider.notifier).format();
     onShowMessage(AppStrings.formatted);
   }
 
-  void _handleMinify(WidgetRef ref) {
-    ref.read(jsonAnalyzerProvider.notifier).minify();
+  Future<void> _handleMinify(WidgetRef ref) async {
+    await ref.read(jsonAnalyzerProvider.notifier).minify();
     onShowMessage(AppStrings.minified);
   }
 

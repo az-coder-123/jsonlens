@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 
 /// Utility class for JSON formatting operations.
 ///
@@ -51,5 +52,81 @@ abstract final class JsonFormatter {
     } catch (_) {
       return null;
     }
+  }
+
+  // ------------------------ Async / Isolate helpers ------------------------
+
+  static void _formatObjectEntry(List<dynamic> msg) {
+    final data = msg[0];
+    final SendPort reply = msg[1] as SendPort;
+    final result = JsonEncoder.withIndent(_indent).convert(data);
+    reply.send(result);
+  }
+
+  static void _formatStringEntry(List<dynamic> msg) {
+    final input = msg[0] as String;
+    final SendPort reply = msg[1] as SendPort;
+    final result = JsonEncoder.withIndent(_indent).convert(jsonDecode(input));
+    reply.send(result);
+  }
+
+  static void _minifyStringEntry(List<dynamic> msg) {
+    final input = msg[0] as String;
+    final SendPort reply = msg[1] as SendPort;
+    final result = JsonEncoder().convert(jsonDecode(input));
+    reply.send(result);
+  }
+
+  /// Formats an already-decoded object using an isolate.
+  static Future<String> formatObjectAsync(dynamic data) async {
+    final rp = ReceivePort();
+    await Isolate.spawn(_formatObjectEntry, [data, rp.sendPort]);
+    final result = await rp.first as String;
+    rp.close();
+    return result;
+  }
+
+  /// Formats a raw JSON string using an isolate (parse + pretty-print).
+  static Future<String> formatAsync(String input) async {
+    if (input.trim().isEmpty) return '';
+    final rp = ReceivePort();
+    await Isolate.spawn(_formatStringEntry, [input, rp.sendPort]);
+    final result = await rp.first as String;
+    rp.close();
+    return result;
+  }
+
+  /// Minifies a raw JSON string using an isolate.
+  static Future<String> minifyAsync(String input) async {
+    if (input.trim().isEmpty) return '';
+    final rp = ReceivePort();
+    await Isolate.spawn(_minifyStringEntry, [input, rp.sendPort]);
+    final result = await rp.first as String;
+    rp.close();
+    return result;
+  }
+
+  /// Parses a JSON string in an isolate and returns the decoded object.
+  ///
+  /// Returns `null` if parsing fails.
+  static Future<dynamic> tryParseAsync(String input) async {
+    if (input.trim().isEmpty) return null;
+    final rp = ReceivePort();
+    // Reuse formatStringEntry by sending parse result back
+    void parseEntry(List<dynamic> msg) {
+      final str = msg[0] as String;
+      final SendPort reply = msg[1] as SendPort;
+      try {
+        final obj = jsonDecode(str);
+        reply.send(obj);
+      } catch (_) {
+        reply.send(null);
+      }
+    }
+
+    await Isolate.spawn(parseEntry, [input, rp.sendPort]);
+    final result = await rp.first;
+    rp.close();
+    return result;
   }
 }

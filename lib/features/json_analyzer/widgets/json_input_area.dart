@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -21,6 +23,8 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   late final TextEditingController _controller;
   late final ScrollController _scrollController;
   late final FocusNode _focusNode;
+  Timer? _debounceTimer;
+  static const _debounceMs = 300; // debounce to avoid many isolate spawns
 
   @override
   void initState() {
@@ -35,11 +39,16 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
   void _onTextChanged(String value) {
-    ref.read(jsonAnalyzerProvider.notifier).updateInput(value);
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(Duration(milliseconds: _debounceMs), () {
+      // fire-and-forget — provider handles async work and cancellation
+      ref.read(jsonAnalyzerProvider.notifier).updateInput(value);
+    });
   }
 
   @override

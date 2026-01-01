@@ -22,6 +22,7 @@ dependencies:
   
   # State management with Riverpod
   flutter_riverpod: ^2.6.1
+  shared_preferences: ^2.2.0
 
 dev_dependencies:
   flutter_test:

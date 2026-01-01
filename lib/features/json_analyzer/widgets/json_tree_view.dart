@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_json_view/flutter_json_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/settings/settings_provider.dart';
 import '../providers/json_analyzer_provider.dart';
+import 'depth_dialog.dart';
+import 'lazy_json_tree.dart';
 
 /// Tree view widget for displaying JSON in an expandable/collapsible tree structure.
 class JsonTreeViewWidget extends ConsumerWidget {
@@ -27,13 +29,14 @@ class JsonTreeViewWidget extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildHeader(),
+          _buildHeader(context, ref),
           const Divider(height: 1),
           Expanded(
             child: _buildContent(
               parsedData: parsedData,
               isValid: isValid,
               isEmpty: isEmpty,
+              ref: ref,
             ),
           ),
         ],
@@ -41,7 +44,7 @@ class JsonTreeViewWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context, WidgetRef ref) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingM,
@@ -69,6 +72,8 @@ class JsonTreeViewWidget extends ConsumerWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
+          const Spacer(),
+          _buildSettingsButton(context, ref),
         ],
       ),
     );
@@ -78,12 +83,13 @@ class JsonTreeViewWidget extends ConsumerWidget {
     required dynamic parsedData,
     required bool isValid,
     required bool isEmpty,
+    required WidgetRef ref,
   }) {
     if (isEmpty || !isValid || parsedData == null) {
       return _buildPlaceholder();
     }
 
-    return _buildTreeView(parsedData);
+    return _buildTreeView(parsedData, ref);
   }
 
   Widget _buildPlaceholder() {
@@ -98,38 +104,29 @@ class JsonTreeViewWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildTreeView(dynamic data) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
-      child: JsonView.map(
-        data is Map<String, dynamic> ? data : {'root': data},
-        theme: JsonViewTheme(
-          backgroundColor: Colors.transparent,
-          keyStyle: GoogleFonts.jetBrainsMono(
-            color: AppColors.jsonKey,
-            fontSize: AppDimensions.fontSizeM,
-          ),
-          stringStyle: GoogleFonts.jetBrainsMono(
-            color: AppColors.jsonString,
-            fontSize: AppDimensions.fontSizeM,
-          ),
-          boolStyle: GoogleFonts.jetBrainsMono(
-            color: AppColors.jsonBoolean,
-            fontSize: AppDimensions.fontSizeM,
-          ),
-          openIcon: const Icon(
-            Icons.arrow_drop_down,
-            color: AppColors.textSecondary,
-            size: AppDimensions.iconSizeM,
-          ),
-          closeIcon: const Icon(
-            Icons.arrow_right,
-            color: AppColors.textSecondary,
-            size: AppDimensions.iconSizeM,
-          ),
-          separator: const Text(': '),
-        ),
-      ),
+  Widget _buildSettingsButton(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    return IconButton(
+      tooltip: 'Tree settings',
+      icon: const Icon(Icons.settings, color: AppColors.textSecondary),
+      onPressed: () async {
+        final selected = await showDialog<int>(
+          context: context,
+          builder: (context) {
+            return DepthDialog(initial: settings.defaultExpandedDepth);
+          },
+        );
+        if (selected != null) {
+          await ref
+              .read(settingsProvider.notifier)
+              .setDefaultExpandedDepth(selected);
+        }
+      },
     );
+  }
+
+  Widget _buildTreeView(dynamic data, WidgetRef ref) {
+    final defaultDepth = ref.watch(settingsProvider).defaultExpandedDepth;
+    return LazyJsonTree(data: data, defaultExpandedDepth: defaultDepth);
   }
 }

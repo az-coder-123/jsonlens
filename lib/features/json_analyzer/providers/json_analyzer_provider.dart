@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/json_differ.dart';
@@ -17,51 +19,98 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
   JsonAnalyzerNotifier() : super(const JsonAnalyzerState());
 
   /// Updates the input and validates/formats it.
-  void updateInput(String value) {
-    final validationResult = JsonValidator.validate(value);
+  int _validationId = 0;
 
-    String output = '';
-    if (validationResult.isValid) {
-      try {
-        output = JsonFormatter.format(value);
-      } catch (_) {
-        output = '';
-      }
+  Future<void> updateInput(String value) async {
+    // Increment validation id to allow cancellation of stale validations.
+    final myId = ++_validationId;
+
+    // Update the input immediately so the UI reflects the change.
+    state = state.copyWith(input: value, output: '');
+
+    // Quick empty check
+    if (value.trim().isEmpty) {
+      state = state.copyWith(
+        validationResult: const JsonValidationResult(
+          isValid: false,
+          isEmpty: true,
+        ),
+      );
+      return;
     }
 
-    state = state.copyWith(
-      input: value,
-      output: output,
-      validationResult: validationResult,
-    );
+    // Quick heuristic check - prevents obvious invalid inputs from spawning isolates
+    if (!JsonValidator.isPotentiallyValid(value)) {
+      state = state.copyWith(
+        validationResult: JsonValidationResult(
+          isValid: false,
+          errorMessage: 'Invalid JSON',
+        ),
+      );
+      return;
+    }
+
+    // Perform full validation in an isolate
+    final validationResult = await JsonValidator.validateAsync(value);
+
+    // If a newer validation started, discard this result
+    if (myId != _validationId) return;
+
+    // Update state with validation result
+    state = state.copyWith(validationResult: validationResult);
+
+    if (validationResult.isValid) {
+      try {
+        final formatted = await JsonFormatter.formatObjectAsync(
+          validationResult.data,
+        );
+        if (myId != _validationId) return; // check again after async work
+        state = state.copyWith(input: value, output: formatted);
+      } catch (_) {
+        if (myId != _validationId) return;
+        state = state.copyWith(output: '');
+      }
+    } else {
+      state = state.copyWith(output: '');
+    }
   }
 
   /// Formats the current input JSON with 2-space indentation.
-  void format() {
+  Future<void> format() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
-      final formatted = JsonFormatter.format(state.input);
+      String formatted;
+      if (state.parsedData != null) {
+        formatted = await JsonFormatter.formatObjectAsync(state.parsedData);
+      } else {
+        formatted = await JsonFormatter.formatAsync(state.input);
+      }
       state = state.copyWith(input: formatted, output: formatted);
     } catch (_) {
-      // Validation already failed, no need to update
+      // Validation already failed or formatting failed, no need to update
     }
   }
 
   /// Minifies the current input JSON.
-  void minify() {
+  Future<void> minify() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
-      final minified = JsonFormatter.minify(state.input);
+      String minified;
+      if (state.parsedData != null) {
+        minified = JsonEncoder().convert(state.parsedData);
+      } else {
+        minified = await JsonFormatter.minifyAsync(state.input);
+      }
       state = state.copyWith(input: minified, output: minified);
     } catch (_) {
-      // Validation already failed, no need to update
+      // Validation already failed or minify failed
     }
   }
 
   /// Sorts all keys in the JSON alphabetically.
-  void sortKeys({bool ascending = true}) {
+  Future<void> sortKeys({bool ascending = true}) async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
@@ -69,7 +118,7 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
         state.parsedData,
         ascending: ascending,
       );
-      final formatted = JsonFormatter.formatObject(sorted);
+      final formatted = await JsonFormatter.formatObjectAsync(sorted);
       state = state.copyWith(input: formatted, output: formatted);
     } catch (_) {
       // Error handling
@@ -77,12 +126,12 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
   }
 
   /// Removes null values from the JSON.
-  void removeNulls() {
+  Future<void> removeNulls() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
       final cleaned = JsonTransformer.removeNulls(state.parsedData);
-      final formatted = JsonFormatter.formatObject(cleaned);
+      final formatted = await JsonFormatter.formatObjectAsync(cleaned);
       state = state.copyWith(input: formatted, output: formatted);
     } catch (_) {
       // Error handling
@@ -90,13 +139,13 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
   }
 
   /// Removes empty values from the JSON.
-  void removeEmpty() {
+  Future<void> removeEmpty() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
       final cleaned = JsonTransformer.removeEmpty(state.parsedData);
       if (cleaned != null) {
-        final formatted = JsonFormatter.formatObject(cleaned);
+        final formatted = await JsonFormatter.formatObjectAsync(cleaned);
         state = state.copyWith(input: formatted, output: formatted);
       }
     } catch (_) {
@@ -105,12 +154,12 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
   }
 
   /// Flattens the JSON structure.
-  void flatten() {
+  Future<void> flatten() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
       final flattened = JsonTransformer.flatten(state.parsedData);
-      final formatted = JsonFormatter.formatObject(flattened);
+      final formatted = await JsonFormatter.formatObjectAsync(flattened);
       state = state.copyWith(input: formatted, output: formatted);
     } catch (_) {
       // Error handling
@@ -123,8 +172,8 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
   }
 
   /// Sets the input from clipboard paste.
-  void pasteFromClipboard(String text) {
-    updateInput(text);
+  Future<void> pasteFromClipboard(String text) async {
+    await updateInput(text);
   }
 
   /// Updates the selected tab index for output view.
