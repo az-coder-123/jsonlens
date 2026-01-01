@@ -28,34 +28,16 @@
 
 ## 📷 Screenshots
 
-- **Input area & Toolbar** — quick editing and toolbar actions (Format, Minify, Copy, Paste).
+_Showcase: concise, professional visual overview of key UI flows._
 
-  ![Input area and toolbar](screenshots/input-area-toolbar.png)
+| Input area & Toolbar | Tree view (expanded) |
+|---|---|
+| ![Input area and toolbar](screenshots/input-area-toolbar.png) | ![Tree view expanded](screenshots/tree-view-expanded.png) |
+| Quick editing, formatting, and clipboard actions. | Lazy, virtualized tree for exploring large JSON documents. |
 
-- **Tree view (expanded)** — lazy, virtualized tree for exploring large JSON documents.
-
-  ![Tree view expanded](screenshots/tree-view-expanded.png)
-
-- **About dialog & Version banner** — release notes and unobtrusive update notification.
-
-  ![About dialog and version banner](screenshots/about-version-banner.png)
-
----
-
-## 🖼️ Full Screenshots Gallery
-Below are all images currently in the `screenshots/` folder for convenience and reference.
-
-- **Input area & Toolbar**
-
-  ![Input area and toolbar](screenshots/input-area-toolbar.png)
-
-- **Tree view (expanded)**
-
-  ![Tree view expanded](screenshots/tree-view-expanded.png)
-
-- **About dialog & Version banner**
-
-  ![About dialog and version banner](screenshots/about-version-banner.png)
+| About dialog & Version banner | More screenshots |
+|---|---|
+| ![About dialog and version banner](screenshots/about-version-banner.png) | For additional images see the `/screenshots` folder in the repository. |
 
 ---
 
