@@ -161,11 +161,31 @@ flutter build macos --release
 flutter run -d windows
 ```
 
-- Build release:
+- Build release (manual):
 
 ```bash
 flutter build windows --release
 ```
+
+- Build release (recommended: packaged ZIP via script):
+
+Run the provided PowerShell script from the project root on a Windows machine to build and package a release ZIP:
+
+```powershell
+# From project root in PowerShell
+.\tool\release\build_windows_release.ps1
+```
+
+The script performs the following steps:
+- Ensures Flutter dependencies (`flutter pub get`)
+- Builds a release (`flutter build windows --release`)
+- Collects build outputs from `build/windows/runner/Release`
+- Creates a ZIP artifact at `release/windows/<AppName>.zip` and removes the temporary copied folder
+
+> Notes:
+> - Make sure you run the script on Windows and have Flutter and Visual Studio (Desktop development workload) installed and in PATH.
+> - If PowerShell execution policy prevents running the script, run it with an explicit bypass: `powershell -ExecutionPolicy Bypass -File .\tool\release\build_windows_release.ps1`.
+> - To keep the unpacked release folder instead of removing it, edit the script and comment out the line that deletes the temporary folder.
 
 > Note: Consider creating an installer (MSIX, Inno Setup, NSIS, etc.) for user-friendly distribution.
 
