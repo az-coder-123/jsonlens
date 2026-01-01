@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
@@ -31,12 +32,35 @@ class VersionBanner extends ConsumerWidget {
           color: AppColors.surface,
           child: InkWell(
             onTap: () async {
-              // open download link if present
               final url = state.info!.downloadAt;
-              if (url != null && url.isNotEmpty) {
-                // open externally
-                // use url_launcher here if needed
-              }
+              // Show release notes dialog
+              showDialog<void>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('New version ${state.info!.latestVersion}'),
+                  content: SingleChildScrollView(
+                    child: Text(state.info!.releaseNotes),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                    if (url != null && url.isNotEmpty)
+                      TextButton(
+                        onPressed: () async {
+                          Navigator.of(context).pop();
+                          final uri = Uri.parse(url);
+                          // Launch the URL
+                          try {
+                            await launchUrl(uri);
+                          } catch (_) {}
+                        },
+                        child: const Text('Update'),
+                      ),
+                  ],
+                ),
+              );
             },
             child: Container(
               padding: const EdgeInsets.symmetric(

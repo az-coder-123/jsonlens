@@ -93,35 +93,26 @@ class VersionNotifier extends StateNotifier<VersionState> {
     }
   }
 
+  /// Compare two version strings a and b.
+  /// Returns 1 if a > b, -1 if a < b, 0 if equal.
+  static int compareVersions(String a, String b) {
+    final aParts = a.split('.').map(int.tryParse).map((v) => v ?? 0).toList();
+    final bParts = b.split('.').map(int.tryParse).map((v) => v ?? 0).toList();
+    final len = aParts.length > bParts.length ? aParts.length : bParts.length;
+    for (var i = 0; i < len; i++) {
+      final av = (i < aParts.length) ? aParts[i] : 0;
+      final bv = (i < bParts.length) ? bParts[i] : 0;
+      if (av > bv) return 1;
+      if (av < bv) return -1;
+    }
+    return 0;
+  }
+
   Future<bool> _isNewer(VersionInfo info) async {
     try {
       final pkg = await PackageInfo.fromPlatform();
       final current = pkg.version;
-      // Simple string compare using semantic components
-      final latestParts = info.latestVersion
-          .split('.')
-          .map(int.tryParse)
-          .map((v) => v ?? 0)
-          .toList();
-      final curParts = current
-          .split('.')
-          .map(int.tryParse)
-          .map((v) => v ?? 0)
-          .toList();
-      for (
-        var i = 0;
-        i <
-            (latestParts.length > curParts.length
-                ? latestParts.length
-                : curParts.length);
-        i++
-      ) {
-        final l = (i < latestParts.length) ? latestParts[i] : 0;
-        final c = (i < curParts.length) ? curParts[i] : 0;
-        if (l > c) return true;
-        if (l < c) return false;
-      }
-      return false;
+      return compareVersions(info.latestVersion, current) > 0;
     } catch (_) {
       return false;
     }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../version_check/about_dialog.dart';
 import '../../version_check/version_banner.dart';
 import '../../version_check/version_notifier.dart';
 import '../providers/json_analyzer_provider.dart';
@@ -97,12 +98,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          _buildBody(),
-          const VersionBanner(),
-        ],
-      ),
+      body: Stack(children: [_buildBody(), const VersionBanner()]),
       bottomNavigationBar: const ValidationIndicator(),
     );
   }
@@ -136,6 +132,39 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
           ),
           onPressed: _toggleTools,
           tooltip: 'Advanced Tools',
+        ),
+        IconButton(
+          icon: const Icon(Icons.system_update_alt),
+          tooltip: 'Check for updates',
+          onPressed: () async {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Checking for updates...')),
+            );
+            await ref
+                .read(versionNotifierProvider.notifier)
+                .checkForUpdateIfConnected(force: true);
+            if (!mounted) return;
+            final st = ref.read(versionNotifierProvider);
+            if (st.hasNew) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('A new version is available')),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('You are up to date')),
+              );
+            }
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.info_outline),
+          tooltip: 'About',
+          onPressed: () async {
+            await showDialog<void>(
+              context: context,
+              builder: (context) => const AboutAppDialog(),
+            );
+          },
         ),
         const SizedBox(width: AppDimensions.paddingS),
       ],
