@@ -5,8 +5,13 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
 import '../providers/json_analyzer_provider.dart';
+import '../widgets/advanced_toolbar.dart';
+import '../widgets/json_compare_panel.dart';
 import '../widgets/json_input_area.dart';
 import '../widgets/json_output_area.dart';
+import '../widgets/json_path_query_panel.dart';
+import '../widgets/json_search_panel.dart';
+import '../widgets/json_statistics_panel.dart';
 import '../widgets/json_tree_view.dart';
 import '../widgets/toolbar.dart';
 import '../widgets/validation_indicator.dart';
@@ -23,28 +28,33 @@ class JsonAnalyzerScreen extends ConsumerStatefulWidget {
 }
 
 class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+    with TickerProviderStateMixin {
+  late final TabController _outputTabController;
+  late final TabController _toolsTabController;
+  bool _showSearch = false;
+  bool _showTools = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(_onTabChanged);
+    _outputTabController = TabController(length: 2, vsync: this);
+    _toolsTabController = TabController(length: 4, vsync: this);
+    _outputTabController.addListener(_onTabChanged);
   }
 
   @override
   void dispose() {
-    _tabController.removeListener(_onTabChanged);
-    _tabController.dispose();
+    _outputTabController.removeListener(_onTabChanged);
+    _outputTabController.dispose();
+    _toolsTabController.dispose();
     super.dispose();
   }
 
   void _onTabChanged() {
-    if (!_tabController.indexIsChanging) {
+    if (!_outputTabController.indexIsChanging) {
       ref
           .read(jsonAnalyzerProvider.notifier)
-          .setSelectedTab(_tabController.index);
+          .setSelectedTab(_outputTabController.index);
     }
   }
 
@@ -59,6 +69,20 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
         margin: const EdgeInsets.all(AppDimensions.paddingM),
       ),
     );
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _showSearch = !_showSearch;
+      if (_showSearch) _showTools = false;
+    });
+  }
+
+  void _toggleTools() {
+    setState(() {
+      _showTools = !_showTools;
+      if (_showTools) _showSearch = false;
+    });
   }
 
   @override
@@ -83,6 +107,25 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
           const Text(AppStrings.appName),
         ],
       ),
+      actions: [
+        IconButton(
+          icon: Icon(
+            Icons.search,
+            color: _showSearch ? AppColors.primary : AppColors.textSecondary,
+          ),
+          onPressed: _toggleSearch,
+          tooltip: 'Search in JSON',
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.build,
+            color: _showTools ? AppColors.primary : AppColors.textSecondary,
+          ),
+          onPressed: _toggleTools,
+          tooltip: 'Advanced Tools',
+        ),
+        const SizedBox(width: AppDimensions.paddingS),
+      ],
     );
   }
 
@@ -90,6 +133,9 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
     return Column(
       children: [
         Toolbar(onShowMessage: _showMessage),
+        AdvancedToolbar(onShowMessage: _showMessage),
+        if (_showSearch) const JsonSearchPanel(),
+        if (_showTools) _buildToolsPanel(),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -105,6 +151,78 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildToolsPanel() {
+    return Container(
+      height: 350,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Column(
+        children: [
+          TabBar(
+            controller: _toolsTabController,
+            tabs: const [
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.analytics, size: AppDimensions.iconSizeS),
+                    SizedBox(width: AppDimensions.paddingXS),
+                    Text('Statistics'),
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.route, size: AppDimensions.iconSizeS),
+                    SizedBox(width: AppDimensions.paddingXS),
+                    Text('Path Query'),
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.compare_arrows, size: AppDimensions.iconSizeS),
+                    SizedBox(width: AppDimensions.paddingXS),
+                    Text('Compare'),
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.history, size: AppDimensions.iconSizeS),
+                    SizedBox(width: AppDimensions.paddingXS),
+                    Text('History'),
+                  ],
+                ),
+              ),
+            ],
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: AppColors.border,
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _toolsTabController,
+              children: const [
+                JsonStatisticsPanel(),
+                JsonPathQueryPanel(),
+                JsonComparePanel(),
+                _HistoryPlaceholder(),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -150,7 +268,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
           const Divider(height: 1),
           Expanded(
             child: TabBarView(
-              controller: _tabController,
+              controller: _outputTabController,
               children: const [_FormattedTabContent(), _TreeViewTabContent()],
             ),
           ),
@@ -168,7 +286,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
         ),
       ),
       child: TabBar(
-        controller: _tabController,
+        controller: _outputTabController,
         tabs: const [
           Tab(
             child: Row(
@@ -397,5 +515,40 @@ class _TreeContent extends ConsumerWidget {
     }
 
     return const JsonTreeViewWidget();
+  }
+}
+
+/// Placeholder widget for History feature (coming soon).
+class _HistoryPlaceholder extends StatelessWidget {
+  const _HistoryPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.history, size: 48, color: AppColors.textMuted),
+          const SizedBox(height: AppDimensions.paddingM),
+          Text(
+            'History feature coming soon',
+            style: TextStyle(
+              fontFamily: 'JetBrains Mono',
+              fontSize: AppDimensions.fontSizeM,
+              color: AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.paddingS),
+          Text(
+            'Track your JSON transformations',
+            style: TextStyle(
+              fontFamily: 'JetBrains Mono',
+              fontSize: AppDimensions.fontSizeS,
+              color: AppColors.textMuted.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
