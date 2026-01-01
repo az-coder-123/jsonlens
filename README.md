@@ -1,16 +1,180 @@
-# jsonlens
+# jsonlens 🔎📁
 
-A new Flutter project.
+**JSONLens** — A professional Flutter application for analyzing, formatting, and exploring JSON (Dark Mode by default).
 
-## Getting Started
+## 🚀 Key Features
+- Display and format JSON using 2-space indentation
+- Real-time validation with descriptive error messages (line number and reason)
+- Syntax highlighting with JetBrains Mono font
+- Expandable/collapsible JSON tree view
+- Toolbar: Format, Minify, Clear, Copy, Paste
+- Validation indicator: Valid (green) / Invalid (red)
 
-This project is a starting point for a Flutter application.
+## 🧩 Technology & Libraries
+- Flutter
+- State management: Riverpod (`flutter_riverpod`)
+- Syntax highlighting: `flutter_highlight`
+- Font: `google_fonts` (JetBrains Mono)
+- JSON tree view: `flutter_json_view`
+- Clipboard utilities: `flutter/services`
 
-A few resources to get you started if this is your first Flutter project:
+## 🛠️ Requirements
+- Flutter SDK (stable)
+- For iOS/macOS builds: macOS with Xcode and CocoaPods
+- For Windows builds: Visual Studio (Desktop development workload) and required toolchain
+- For Linux builds: standard desktop toolchain (GCC, etc.)
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## ⚡ Quick Start
+1. Install dependencies:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+```
+
+2. Run the app on a device or emulator:
+
+```bash
+flutter run
+```
+
+3. Run tests:
+
+```bash
+flutter test
+```
+
+4. Format source code:
+
+```bash
+dart format .
+```
+
+---
+
+## 🧰 Build — Debug & Release (by platform)
+
+> Note: Flutter supports `debug`, `profile`, and `release` build modes.
+
+### Android
+- Run on a connected device or emulator:
+
+```bash
+flutter run -d <device-id>
+```
+
+- Build debug APK:
+
+```bash
+flutter build apk --debug
+```
+
+- Build release APK:
+
+```bash
+flutter build apk --release
+```
+
+- Build Android App Bundle (recommended for Play Store):
+
+```bash
+flutter build appbundle --release
+```
+
+- Install APK to a device using ADB:
+
+```bash
+adb install -r build/app/outputs/flutter-apk/app-release.apk
+```
+
+---
+
+### iOS (requires macOS + Xcode)
+- Run on a connected device or simulator:
+
+```bash
+flutter run -d <device-id>
+```
+
+- Build iOS app (Xcode project):
+
+```bash
+flutter build ios --release
+```
+
+- Build IPA for distribution:
+
+```bash
+flutter build ipa --export-options-plist=path/to/ExportOptions.plist
+```
+
+> Note: App Store distribution requires proper signing, provisioning profiles, and Xcode archiving.
+
+---
+
+### macOS
+- Run in debug:
+
+```bash
+flutter run -d macos
+```
+
+- Build release:
+
+```bash
+flutter build macos --release
+```
+
+> Note: Code signing and notarization may be required for distribution.
+
+---
+
+### Windows
+- Run in debug:
+
+```bash
+flutter run -d windows
+```
+
+- Build release:
+
+```bash
+flutter build windows --release
+```
+
+> Note: Consider creating an installer (MSIX, Inno Setup, NSIS, etc.) for user-friendly distribution.
+
+---
+
+### Linux
+- Run in debug:
+
+```bash
+flutter run -d linux
+```
+
+- Build release:
+
+```bash
+flutter build linux --release
+```
+
+> Note: Package the app as `.deb`, `.rpm`, or other distro-specific formats for distribution.
+
+---
+
+## 💡 Development Tips
+- Use profile mode to evaluate performance:
+
+```bash
+flutter run --profile
+```
+
+- Build for specific flavors or target platforms using `--flavor` and `--target-platform` as needed.
+
+## ✅ Contribution Guidelines
+- Follow coding standards described in `AGENTS.md`.
+- Write unit and widget tests for new features.
+- Open clear pull requests with descriptions and screenshots when UI changes occur.
+
+## 📖 License
+Add a `LICENSE` file (for example, MIT) if you intend to publish the project under an open-source license.

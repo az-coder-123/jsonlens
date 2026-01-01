@@ -121,6 +121,16 @@ String processJson(String input) {
 String formatJson(String input) { }
 ```
 
+#### Language Policy
+- **English is the required language for all project communication and artifacts.** This includes:
+  - Code comments and documentation (in `lib/`, `README.md`, `AGENTS.md`, `docs/`, etc.)
+  - Logs and runtime diagnostic messages
+  - Commit messages, pull request titles/descriptions, and issue titles/comments
+  - CI job names, pipeline logs, and release notes
+- Rationale: using English ensures consistency, improves accessibility for international contributors, and enables better tooling/automation.
+- Exceptions: when using a non-English phrase is necessary (e.g., reproducing a user-reported string), include a short English translation immediately adjacent.
+- Enforcement: reviewers should request changes for non-English content during code review; consider adding automated checks (linters or CI scripts) to flag non-English text in documentation and comments where practical.
+
 ### 2. Avoid Duplication (DRY Principle)
 
 #### Extract Common Logic
