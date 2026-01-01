@@ -26,6 +26,20 @@
 - JSON tree view: `flutter_json_view`
 - Clipboard utilities: `flutter/services`
 
+## 📷 Screenshots
+
+- **Input area & Toolbar** — quick editing and toolbar actions (Format, Minify, Copy, Paste).
+
+  ![Input area and toolbar](screenshots/input-area-toolbar.png)
+
+- **Tree view (expanded)** — lazy, virtualized tree for exploring large JSON documents.
+
+  ![Tree view expanded](screenshots/tree-view-expanded.png)
+
+- **About dialog & Version banner** — release notes and unobtrusive update notification.
+
+  ![About dialog and version banner](screenshots/about-version-banner.png)
+
 ## 🛠️ Requirements
 - Flutter SDK (stable)
 - For iOS/macOS builds: macOS with Xcode and CocoaPods
