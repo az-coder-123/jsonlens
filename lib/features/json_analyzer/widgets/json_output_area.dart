@@ -8,6 +8,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
 import '../providers/json_analyzer_provider.dart';
+import 'processing_overlay.dart';
 
 /// Output area widget for displaying formatted JSON with syntax highlighting.
 class JsonOutputArea extends ConsumerWidget {
@@ -19,6 +20,7 @@ class JsonOutputArea extends ConsumerWidget {
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
     final errorMessage = ref.watch(errorMessageProvider);
+    final isProcessing = ref.watch(isProcessingProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -32,11 +34,17 @@ class JsonOutputArea extends ConsumerWidget {
           _buildHeader(),
           const Divider(height: 1),
           Expanded(
-            child: _buildContent(
-              output: output,
-              isValid: isValid,
-              isEmpty: isEmpty,
-              errorMessage: errorMessage,
+            child: Stack(
+              children: [
+                _buildContent(
+                  output: output,
+                  isValid: isValid,
+                  isEmpty: isEmpty,
+                  errorMessage: errorMessage,
+                ),
+                if (isProcessing)
+                  const ProcessingOverlay(message: 'Formatting JSON...'),
+              ],
             ),
           ),
         ],

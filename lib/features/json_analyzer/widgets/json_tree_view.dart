@@ -9,6 +9,7 @@ import '../../../core/settings/settings_provider.dart';
 import '../providers/json_analyzer_provider.dart';
 import 'depth_dialog.dart';
 import 'lazy_json_tree.dart';
+import 'processing_overlay.dart';
 
 /// Tree view widget for displaying JSON in an expandable/collapsible tree structure.
 class JsonTreeViewWidget extends ConsumerWidget {
@@ -19,6 +20,7 @@ class JsonTreeViewWidget extends ConsumerWidget {
     final parsedData = ref.watch(parsedDataProvider);
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
+    final isProcessing = ref.watch(isProcessingProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -32,11 +34,17 @@ class JsonTreeViewWidget extends ConsumerWidget {
           _buildHeader(context, ref),
           const Divider(height: 1),
           Expanded(
-            child: _buildContent(
-              parsedData: parsedData,
-              isValid: isValid,
-              isEmpty: isEmpty,
-              ref: ref,
+            child: Stack(
+              children: [
+                _buildContent(
+                  parsedData: parsedData,
+                  isValid: isValid,
+                  isEmpty: isEmpty,
+                  ref: ref,
+                ),
+                if (isProcessing)
+                  const ProcessingOverlay(message: 'Processing large JSON...'),
+              ],
             ),
           ),
         ],

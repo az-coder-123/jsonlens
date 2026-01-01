@@ -4,7 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 class Settings {
   final int defaultExpandedDepth;
 
-  const Settings({this.defaultExpandedDepth = 1});
+  const Settings({
+    this.defaultExpandedDepth = 0,
+  }); // Default to 0 for better performance with large files
 
   Settings copyWith({int? defaultExpandedDepth}) {
     return Settings(

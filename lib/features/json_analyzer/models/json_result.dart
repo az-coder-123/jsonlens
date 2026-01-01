@@ -82,6 +82,9 @@ class JsonAnalyzerState {
   /// The currently selected output view tab index.
   final int selectedTabIndex;
 
+  /// Whether async processing is in progress.
+  final bool isProcessing;
+
   const JsonAnalyzerState({
     this.input = '',
     this.output = '',
@@ -90,6 +93,7 @@ class JsonAnalyzerState {
       isEmpty: true,
     ),
     this.selectedTabIndex = 0,
+    this.isProcessing = false,
   });
 
   /// Whether the current JSON is valid.
@@ -110,12 +114,14 @@ class JsonAnalyzerState {
     String? output,
     JsonValidationResult? validationResult,
     int? selectedTabIndex,
+    bool? isProcessing,
   }) {
     return JsonAnalyzerState(
       input: input ?? this.input,
       output: output ?? this.output,
       validationResult: validationResult ?? this.validationResult,
       selectedTabIndex: selectedTabIndex ?? this.selectedTabIndex,
+      isProcessing: isProcessing ?? this.isProcessing,
     );
   }
 
@@ -126,11 +132,18 @@ class JsonAnalyzerState {
         other.input == input &&
         other.output == output &&
         other.validationResult == validationResult &&
-        other.selectedTabIndex == selectedTabIndex;
+        other.selectedTabIndex == selectedTabIndex &&
+        other.isProcessing == isProcessing;
   }
 
   @override
   int get hashCode {
-    return Object.hash(input, output, validationResult, selectedTabIndex);
+    return Object.hash(
+      input,
+      output,
+      validationResult,
+      selectedTabIndex,
+      isProcessing,
+    );
   }
 }

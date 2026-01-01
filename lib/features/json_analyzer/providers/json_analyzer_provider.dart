@@ -26,7 +26,9 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     final myId = ++_validationId;
 
     // Update the input immediately so the UI reflects the change.
-    state = state.copyWith(input: value, output: '');
+    // Show loading indicator for large payloads (>50KB)
+    final isLarge = value.length > 50000;
+    state = state.copyWith(input: value, output: '', isProcessing: isLarge);
 
     // Quick empty check
     if (value.trim().isEmpty) {
@@ -35,6 +37,7 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
           isValid: false,
           isEmpty: true,
         ),
+        isProcessing: false,
       );
       return;
     }
@@ -46,6 +49,7 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
           isValid: false,
           errorMessage: 'Invalid JSON',
         ),
+        isProcessing: false,
       );
       return;
     }
@@ -65,13 +69,17 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
           validationResult.data,
         );
         if (myId != _validationId) return; // check again after async work
-        state = state.copyWith(input: value, output: formatted);
+        state = state.copyWith(
+          input: value,
+          output: formatted,
+          isProcessing: false,
+        );
       } catch (_) {
         if (myId != _validationId) return;
-        state = state.copyWith(output: '');
+        state = state.copyWith(output: '', isProcessing: false);
       }
     } else {
-      state = state.copyWith(output: '');
+      state = state.copyWith(output: '', isProcessing: false);
     }
   }
 
@@ -221,6 +229,11 @@ final selectedTabProvider = Provider<int>((ref) {
 /// Provider for the raw input.
 final inputProvider = Provider<String>((ref) {
   return ref.watch(jsonAnalyzerProvider.select((s) => s.input));
+});
+
+/// Provider for checking if processing is in progress.
+final isProcessingProvider = Provider<bool>((ref) {
+  return ref.watch(jsonAnalyzerProvider.select((s) => s.isProcessing));
 });
 
 // ============================================================================

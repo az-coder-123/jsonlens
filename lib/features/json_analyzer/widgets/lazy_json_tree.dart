@@ -16,26 +16,50 @@ class LazyJsonTree extends StatelessWidget {
   const LazyJsonTree({
     super.key,
     required this.data,
-    this.defaultExpandedDepth = 1,
+    this.defaultExpandedDepth = 0, // Default to collapsed for large datasets
   });
 
   @override
   Widget build(BuildContext context) {
-    // Ensure we use a concrete Map type so downstream map() returns List<Widget>
+    // Handle root as array or object
+    if (data is List) {
+      final list = data as List;
+      // Use ListView.builder at root level for virtualization
+      return ListView.builder(
+        padding: const EdgeInsets.all(AppDimensions.paddingM),
+        itemCount: list.length,
+        // Use itemExtent for better scroll performance estimation
+        itemBuilder: (context, index) {
+          return _LazyNode(
+            keyName: '[$index]',
+            value: list[index],
+            depth: 0,
+            defaultExpandedDepth: defaultExpandedDepth,
+          );
+        },
+      );
+    }
+
+    // Handle Map root
     final Map<String, dynamic> root = data is Map<String, dynamic>
-        ? Map<String, dynamic>.from(data as Map)
+        ? data as Map<String, dynamic>
         : <String, dynamic>{'root': data};
 
-    return ListView(
+    final entries = root.entries.toList();
+
+    // Use ListView.builder at root level for virtualization
+    return ListView.builder(
       padding: const EdgeInsets.all(AppDimensions.paddingM),
-      children: root.entries.map((MapEntry<String, dynamic> e) {
+      itemCount: entries.length,
+      itemBuilder: (context, index) {
+        final e = entries[index];
         return _LazyNode(
           keyName: e.key,
           value: e.value,
           depth: 0,
           defaultExpandedDepth: defaultExpandedDepth,
         );
-      }).toList(),
+      },
     );
   }
 }
@@ -66,13 +90,28 @@ class _LazyNodeState extends State<_LazyNode> {
     _expanded = widget.depth < widget.defaultExpandedDepth;
   }
 
+  @override
+  void didUpdateWidget(covariant _LazyNode oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reset expansion state when data changes
+    if (oldWidget.value != widget.value) {
+      _expanded = widget.depth < widget.defaultExpandedDepth;
+    }
+  }
+
   Widget _buildValuePreview() {
-    if (widget.value is Map) {
-      return Text('{...}', style: _valueStyle());
-    } else if (widget.value is List) {
-      return Text('[...]', style: _valueStyle());
+    final v = widget.value;
+    if (v is Map) {
+      final len = v.length;
+      return Text('{$len ${len == 1 ? 'key' : 'keys'}}', style: _valueStyle());
+    } else if (v is List) {
+      final len = v.length;
+      return Text(
+        '[$len ${len == 1 ? 'item' : 'items'}]',
+        style: _valueStyle(),
+      );
     } else {
-      return Text(_formatScalar(widget.value), style: _valueStyle());
+      return Text(_formatScalar(v), style: _valueStyle());
     }
   }
 
@@ -114,21 +153,8 @@ class _LazyNodeState extends State<_LazyNode> {
       padding: EdgeInsets.only(left: widget.depth * 12.0, top: 4, bottom: 4),
       child: ExpansionTile(
         initiallyExpanded: _expanded,
-        onExpansionChanged: (v) async {
-          if (v) {
-            final sw = Stopwatch()..start();
-            setState(() => _expanded = true);
-            // Allow a frame to build children then measure
-            await Future.delayed(Duration(milliseconds: 1));
-            sw.stop();
-            // Log expansion cost for profiling (visible in console)
-            // ignore: avoid_print
-            print(
-              'Expanded node ${widget.keyName} at depth ${widget.depth} in ${sw.elapsedMilliseconds} ms',
-            );
-          } else {
-            setState(() => _expanded = false);
-          }
+        onExpansionChanged: (v) {
+          setState(() => _expanded = v);
         },
         title: Row(
           children: [
@@ -136,7 +162,7 @@ class _LazyNodeState extends State<_LazyNode> {
             _buildValuePreview(),
           ],
         ),
-        children: [_buildChildrenWidget()],
+        children: _expanded ? [_buildChildrenWidget()] : const [],
       ),
     );
   }
@@ -154,7 +180,8 @@ class _LazyNodeState extends State<_LazyNode> {
     }
 
     final count = childCount();
-    const virtualizationThreshold = 64; // tune this as needed
+    const virtualizationThreshold =
+        32; // Reduced threshold for better performance
 
     // If no container children, return empty
     if (count == 0) return const SizedBox.shrink();
