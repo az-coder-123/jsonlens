@@ -40,6 +40,25 @@
 
   ![About dialog and version banner](screenshots/about-version-banner.png)
 
+---
+
+## 🖼️ Full Screenshots Gallery
+Below are all images currently in the `screenshots/` folder for convenience and reference.
+
+- **Input area & Toolbar**
+
+  ![Input area and toolbar](screenshots/input-area-toolbar.png)
+
+- **Tree view (expanded)**
+
+  ![Tree view expanded](screenshots/tree-view-expanded.png)
+
+- **About dialog & Version banner**
+
+  ![About dialog and version banner](screenshots/about-version-banner.png)
+
+---
+
 ## 🛠️ Requirements
 - Flutter SDK (stable)
 - For iOS/macOS builds: macOS with Xcode and CocoaPods
