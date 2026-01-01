@@ -10,6 +10,12 @@
 - Toolbar: Format, Minify, Clear, Copy, Paste
 - Validation indicator: Valid (green) / Invalid (red)
 
+## 🔒 Privacy & Offline-first
+- **Local-first operation:** The app runs entirely locally and does not require a network connection to perform JSON editing, validation, formatting, or tree browsing.
+- **Network use is limited:** The app only uses the network to check for a *new app version* (fetching a small metadata record). This check is **cached** (default TTL 1 hour) to avoid frequent requests.
+- **No tracking / no telemetry:** JSONLens does **not** collect analytics or tracking data. There is no background data tracking or user behavior analytics sent anywhere by default.
+- **No access to personal files:** The app does not read or upload user files, directories, or other personal data on the device; clipboard operations (copy/paste) remain local to the OS clipboard.
+
 ## 🧩 Technology & Libraries
 - Flutter
 - State management: Riverpod (`flutter_riverpod`)
