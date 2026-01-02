@@ -25,86 +25,218 @@ class Toolbar extends ConsumerWidget {
 
     return Container(
       height: AppDimensions.toolbarHeight,
-      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
+      padding: EdgeInsets.only(
+        left: AppDimensions.paddingM,
+        right: AppDimensions.paddingM + 4,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
-      child: Row(
-        children: [
-          _ToolbarButton(
-            icon: Icons.format_align_left,
-            label: AppStrings.format,
-            onPressed: isValid && !isEmpty
-                ? () async => await _handleFormat(ref)
-                : null,
-          ),
-          const SizedBox(width: AppDimensions.paddingS),
-          _ToolbarButton(
-            icon: Icons.compress,
-            label: AppStrings.minify,
-            onPressed: isValid && !isEmpty
-                ? () async => await _handleMinify(ref)
-                : null,
-          ),
-          const SizedBox(width: AppDimensions.paddingS),
-          const Spacer(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 810;
+          if (isNarrow) {
+            // Compact layout: icon buttons + overflow menu
+            final saveEnabled = isValid && output.isNotEmpty;
+            final copyEnabled = isValid && output.isNotEmpty;
+            final clearEnabled = !isEmpty;
+            return Row(
+              children: [
+                IconButton(
+                  tooltip: AppStrings.format,
+                  onPressed: isValid && !isEmpty
+                      ? () => _handleFormat(ref)
+                      : null,
+                  icon: Icon(
+                    Icons.format_align_left,
+                    color: isValid && !isEmpty
+                        ? AppColors.textPrimary
+                        : AppColors.textMuted,
+                  ),
+                ),
+                IconButton(
+                  tooltip: AppStrings.minify,
+                  onPressed: isValid && !isEmpty
+                      ? () => _handleMinify(ref)
+                      : null,
+                  icon: Icon(
+                    Icons.compress,
+                    color: isValid && !isEmpty
+                        ? AppColors.textPrimary
+                        : AppColors.textMuted,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: AppStrings.open,
+                  onPressed: () => _handleOpen(ref),
+                  icon: Icon(Icons.folder_open, color: AppColors.textPrimary),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'More',
+                  icon: Icon(Icons.more_vert, color: AppColors.textPrimary),
+                  onSelected: (value) async {
+                    switch (value) {
+                      case 'save':
+                        if (saveEnabled) await _handleSave(output);
+                        break;
+                      case 'copy':
+                        if (copyEnabled) await _handleCopy(output);
+                        break;
+                      case 'paste':
+                        await _handlePaste(ref);
+                        break;
+                      case 'clear':
+                        if (clearEnabled) _handleClear(ref);
+                        break;
+                      case 'open':
+                        await _handleOpen(ref);
+                        break;
+                      case 'minify':
+                        if (isValid && !isEmpty) await _handleMinify(ref);
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(value: 'open', child: Text(AppStrings.open)),
+                    PopupMenuItem(
+                      value: 'save',
+                      enabled: saveEnabled,
+                      child: Text(AppStrings.save),
+                    ),
+                    PopupMenuItem(
+                      value: 'copy',
+                      enabled: copyEnabled,
+                      child: Text(AppStrings.copy),
+                    ),
+                    PopupMenuItem(
+                      value: 'paste',
+                      child: Text(AppStrings.paste),
+                    ),
+                    PopupMenuItem(
+                      value: 'clear',
+                      enabled: clearEnabled,
+                      child: Text(AppStrings.clear),
+                    ),
+                    PopupMenuItem(
+                      value: 'minify',
+                      child: Text(AppStrings.minify),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          }
 
-          // File group: Open, Save
-          _ToolbarButton(
-            icon: Icons.folder_open,
-            label: AppStrings.open,
-            onPressed: () async => await _handleOpen(ref),
-          ),
-          const SizedBox(width: AppDimensions.paddingS),
-          _ToolbarButton(
-            icon: Icons.save,
-            label: AppStrings.save,
-            onPressed: isValid && output.isNotEmpty
-                ? () async => await _handleSave(output)
-                : null,
-          ),
-          const SizedBox(width: AppDimensions.paddingM),
-          SizedBox(
-            height: 24,
-            child: VerticalDivider(color: AppColors.border, thickness: 1),
-          ),
-          const SizedBox(width: AppDimensions.paddingM),
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: Padding(
+                padding: const EdgeInsets.only(right: AppDimensions.paddingM),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Left group: Format, Minify
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ToolbarButton(
+                          icon: Icons.format_align_left,
+                          label: AppStrings.format,
+                          onPressed: isValid && !isEmpty
+                              ? () async => await _handleFormat(ref)
+                              : null,
+                        ),
+                        const SizedBox(width: AppDimensions.paddingS),
+                        _ToolbarButton(
+                          icon: Icons.compress,
+                          label: AppStrings.minify,
+                          onPressed: isValid && !isEmpty
+                              ? () async => await _handleMinify(ref)
+                              : null,
+                        ),
+                      ],
+                    ),
 
-          // Edit group: Paste, Clear
-          FutureBuilder<bool>(
-            future: ClipboardHelper.hasText(),
-            builder: (context, snapshot) {
-              final hasText = snapshot.data ?? false;
-              return _ToolbarButton(
-                icon: Icons.content_paste,
-                label: AppStrings.paste,
-                onPressed: hasText ? () => _handlePaste(ref) : null,
-              );
-            },
-          ),
-          const SizedBox(width: AppDimensions.paddingS),
-          _ToolbarButton(
-            icon: Icons.clear_all,
-            label: AppStrings.clear,
-            onPressed: !isEmpty ? () => _handleClear(ref) : null,
-          ),
-          const SizedBox(width: AppDimensions.paddingM),
-          SizedBox(
-            height: 24,
-            child: VerticalDivider(color: AppColors.border, thickness: 1),
-          ),
-          const SizedBox(width: AppDimensions.paddingM),
+                    const SizedBox(width: 70),
 
-          // Export group: Copy
-          _ToolbarButton(
-            icon: Icons.content_copy,
-            label: AppStrings.copy,
-            onPressed: isValid && output.isNotEmpty
-                ? () => _handleCopy(output)
-                : null,
-          ),
-        ],
+                    // Right group: File / Edit / Export
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // File group
+                        _ToolbarButton(
+                          icon: Icons.folder_open,
+                          label: AppStrings.open,
+                          onPressed: () async => await _handleOpen(ref),
+                        ),
+                        const SizedBox(width: AppDimensions.paddingS),
+                        _ToolbarButton(
+                          icon: Icons.save,
+                          label: AppStrings.save,
+                          onPressed: isValid && output.isNotEmpty
+                              ? () async => await _handleSave(output)
+                              : null,
+                        ),
+                        const SizedBox(width: AppDimensions.paddingM),
+                        SizedBox(
+                          height: 24,
+                          child: VerticalDivider(
+                            color: AppColors.border,
+                            thickness: 1,
+                          ),
+                        ),
+                        const SizedBox(width: AppDimensions.paddingM),
+
+                        // Edit group
+                        FutureBuilder<bool>(
+                          future: ClipboardHelper.hasText(),
+                          builder: (context, snapshot) {
+                            final hasText = snapshot.data ?? false;
+                            return _ToolbarButton(
+                              icon: Icons.content_paste,
+                              label: AppStrings.paste,
+                              onPressed: hasText
+                                  ? () => _handlePaste(ref)
+                                  : null,
+                            );
+                          },
+                        ),
+                        const SizedBox(width: AppDimensions.paddingS),
+                        _ToolbarButton(
+                          icon: Icons.clear_all,
+                          label: AppStrings.clear,
+                          onPressed: !isEmpty ? () => _handleClear(ref) : null,
+                        ),
+                        const SizedBox(width: AppDimensions.paddingM),
+                        SizedBox(
+                          height: 24,
+                          child: VerticalDivider(
+                            color: AppColors.border,
+                            thickness: 1,
+                          ),
+                        ),
+                        const SizedBox(width: AppDimensions.paddingM),
+
+                        // Export group
+                        _ToolbarButton(
+                          icon: Icons.content_copy,
+                          label: AppStrings.copy,
+                          onPressed: isValid && output.isNotEmpty
+                              ? () => _handleCopy(output)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
