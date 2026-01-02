@@ -44,7 +44,13 @@ _Showcase: concise, professional visual overview of key UI flows._
 
 **Note:** For additional images see the `/screenshots` folder in the repository.
 
-## 🛠️ Requirements
+## � Downloads
+- **macOS** (zip): [jsonlens.app.zip](release/macos/jsonlens.app.zip) — unzip and open `jsonlens.app`; optionally move it to **/Applications** to install.
+- **Windows** (zip): [jsonlens.zip](release/windows/jsonlens.zip) — unzip and run the executable from the unpacked folder.
+
+> Release artifacts are stored under the `release/` folder in this repository. Check the release notes or the `release/` subfolders for the most recent build. If you need signed installers or notarized macOS builds, contact the maintainers or check official release channels.
+
+## �🛠️ Requirements
 - Flutter SDK (stable)
 - For iOS/macOS builds: macOS with Xcode and CocoaPods
 - For Windows builds: Visual Studio (Desktop development workload) and required toolchain
