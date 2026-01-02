@@ -101,17 +101,30 @@ class _LazyNodeState extends State<_LazyNode> {
 
   Widget _buildValuePreview() {
     final v = widget.value;
+    // Use single-line ellipsized text to avoid horizontal overflow in tight layouts
     if (v is Map) {
       final len = v.length;
-      return Text('{$len ${len == 1 ? 'key' : 'keys'}}', style: _valueStyle());
+      return Text(
+        '{$len ${len == 1 ? 'key' : 'keys'}}',
+        style: _valueStyle(),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+      );
     } else if (v is List) {
       final len = v.length;
       return Text(
         '[$len ${len == 1 ? 'item' : 'items'}]',
         style: _valueStyle(),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
       );
     } else {
-      return Text(_formatScalar(v), style: _valueStyle());
+      return Text(
+        _formatScalar(v),
+        style: _valueStyle(),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+      );
     }
   }
 
@@ -143,7 +156,9 @@ class _LazyNodeState extends State<_LazyNode> {
         child: Row(
           children: [
             Text('${widget.keyName}: ', style: _keyStyle()),
-            _buildValuePreview(),
+            const SizedBox(width: AppDimensions.paddingS),
+            // Allow the preview to take remaining space and ellipsize when needed
+            Expanded(child: _buildValuePreview()),
           ],
         ),
       );
@@ -158,8 +173,17 @@ class _LazyNodeState extends State<_LazyNode> {
         },
         title: Row(
           children: [
-            Text('${widget.keyName}: ', style: _keyStyle()),
-            _buildValuePreview(),
+            // Key can be long; allow it to shrink and ellipsize
+            Flexible(
+              child: Text(
+                '${widget.keyName}: ',
+                style: _keyStyle(),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            const SizedBox(width: AppDimensions.paddingS),
+            Expanded(child: _buildValuePreview()),
           ],
         ),
         children: _expanded ? [_buildChildrenWidget()] : const [],
