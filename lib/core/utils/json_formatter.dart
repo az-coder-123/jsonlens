@@ -129,4 +129,22 @@ abstract final class JsonFormatter {
     rp.close();
     return result;
   }
+
+  // ------------------------ Object-based Async helpers ------------------------
+
+  static void _minifyObjectEntry(List<dynamic> msg) {
+    final data = msg[0];
+    final SendPort reply = msg[1] as SendPort;
+    final result = JsonEncoder().convert(data);
+    reply.send(result);
+  }
+
+  /// Minifies an already-decoded object using an isolate.
+  static Future<String> minifyObjectAsync(dynamic data) async {
+    final rp = ReceivePort();
+    await Isolate.spawn(_minifyObjectEntry, [data, rp.sendPort]);
+    final result = await rp.first as String;
+    rp.close();
+    return result;
+  }
 }

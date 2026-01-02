@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 
 /// Utility class for advanced JSON transformations.
 abstract final class JsonTransformer {
@@ -218,4 +219,112 @@ class _PathSegment {
   _PathSegment({this.key, this.index});
 
   bool get isArrayIndex => index != null;
+}
+
+// ============================================================================
+// Async / Isolate helpers for heavy transformations
+// ============================================================================
+
+/// Entry point for sortKeys in isolate.
+void _sortKeysEntry(List<dynamic> msg) {
+  final data = msg[0];
+  final ascending = msg[1] as bool;
+  final SendPort reply = msg[2] as SendPort;
+  final result = JsonTransformer.sortKeys(data, ascending: ascending);
+  reply.send(result);
+}
+
+/// Entry point for flatten in isolate.
+void _flattenEntry(List<dynamic> msg) {
+  final data = msg[0];
+  final delimiter = msg[1] as String;
+  final SendPort reply = msg[2] as SendPort;
+  final result = JsonTransformer.flatten(data, delimiter: delimiter);
+  reply.send(result);
+}
+
+/// Entry point for removeNulls in isolate.
+void _removeNullsEntry(List<dynamic> msg) {
+  final data = msg[0];
+  final SendPort reply = msg[1] as SendPort;
+  final result = JsonTransformer.removeNulls(data);
+  reply.send(result);
+}
+
+/// Entry point for removeEmpty in isolate.
+void _removeEmptyEntry(List<dynamic> msg) {
+  final data = msg[0];
+  final SendPort reply = msg[1] as SendPort;
+  final result = JsonTransformer.removeEmpty(data);
+  reply.send(result);
+}
+
+/// Entry point for filterKeys in isolate.
+void _filterKeysEntry(List<dynamic> msg) {
+  final data = msg[0];
+  final keysToKeep = (msg[1] as List).toSet().cast<String>();
+  final SendPort reply = msg[2] as SendPort;
+  final result = JsonTransformer.filterKeys(data, keysToKeep);
+  reply.send(result);
+}
+
+/// Extension with async versions of transformer methods.
+extension JsonTransformerAsync on JsonTransformer {
+  /// Sorts keys in isolate (async).
+  static Future<dynamic> sortKeysAsync(
+    dynamic data, {
+    bool ascending = true,
+  }) async {
+    final rp = ReceivePort();
+    await Isolate.spawn(_sortKeysEntry, [data, ascending, rp.sendPort]);
+    final result = await rp.first;
+    rp.close();
+    return result;
+  }
+
+  /// Flattens JSON in isolate (async).
+  static Future<Map<String, dynamic>> flattenAsync(
+    dynamic data, {
+    String delimiter = '.',
+  }) async {
+    final rp = ReceivePort();
+    await Isolate.spawn(_flattenEntry, [data, delimiter, rp.sendPort]);
+    final result = await rp.first as Map<String, dynamic>;
+    rp.close();
+    return result;
+  }
+
+  /// Removes nulls in isolate (async).
+  static Future<dynamic> removeNullsAsync(dynamic data) async {
+    final rp = ReceivePort();
+    await Isolate.spawn(_removeNullsEntry, [data, rp.sendPort]);
+    final result = await rp.first;
+    rp.close();
+    return result;
+  }
+
+  /// Removes empty values in isolate (async).
+  static Future<dynamic> removeEmptyAsync(dynamic data) async {
+    final rp = ReceivePort();
+    await Isolate.spawn(_removeEmptyEntry, [data, rp.sendPort]);
+    final result = await rp.first;
+    rp.close();
+    return result;
+  }
+
+  /// Filters keys in isolate (async).
+  static Future<dynamic> filterKeysAsync(
+    dynamic data,
+    Set<String> keysToKeep,
+  ) async {
+    final rp = ReceivePort();
+    await Isolate.spawn(_filterKeysEntry, [
+      data,
+      keysToKeep.toList(),
+      rp.sendPort,
+    ]);
+    final result = await rp.first;
+    rp.close();
+    return result;
+  }
 }

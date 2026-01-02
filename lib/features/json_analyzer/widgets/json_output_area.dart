@@ -11,6 +11,9 @@ import '../providers/json_analyzer_provider.dart';
 import 'processing_overlay.dart';
 
 /// Output area widget for displaying formatted JSON with syntax highlighting.
+///
+/// For large JSON files (>1MB), syntax highlighting is disabled and plain
+/// text is displayed instead to maintain UI responsiveness.
 class JsonOutputArea extends ConsumerWidget {
   const JsonOutputArea({super.key});
 
@@ -21,6 +24,11 @@ class JsonOutputArea extends ConsumerWidget {
     final isEmpty = ref.watch(isEmptyProvider);
     final errorMessage = ref.watch(errorMessageProvider);
     final isProcessing = ref.watch(isProcessingProvider);
+    final disableSyntaxHighlighting = ref.watch(
+      disableSyntaxHighlightingProvider,
+    );
+    final isOnDemandOutput = ref.watch(isOnDemandOutputProvider);
+    final inputSize = ref.watch(inputSizeProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -31,16 +39,22 @@ class JsonOutputArea extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildHeader(),
+          _buildHeader(
+            disableSyntaxHighlighting: disableSyntaxHighlighting,
+            inputSize: inputSize,
+          ),
           const Divider(height: 1),
           Expanded(
             child: Stack(
               children: [
                 _buildContent(
+                  ref: ref,
                   output: output,
                   isValid: isValid,
                   isEmpty: isEmpty,
                   errorMessage: errorMessage,
+                  disableSyntaxHighlighting: disableSyntaxHighlighting,
+                  isOnDemandOutput: isOnDemandOutput,
                 ),
                 if (isProcessing)
                   const ProcessingOverlay(message: 'Formatting JSON...'),
@@ -52,7 +66,10 @@ class JsonOutputArea extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader({
+    required bool disableSyntaxHighlighting,
+    required int inputSize,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingM,
@@ -80,16 +97,76 @@ class JsonOutputArea extends ConsumerWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
+          const Spacer(),
+          // Show size and mode indicator for large files
+          if (inputSize > 0) ...[
+            _buildSizeIndicator(inputSize),
+            if (disableSyntaxHighlighting) ...[
+              const SizedBox(width: AppDimensions.paddingS),
+              _buildPlainTextBadge(),
+            ],
+          ],
         ],
       ),
     );
   }
 
+  Widget _buildSizeIndicator(int size) {
+    final sizeStr = _formatSize(size);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingS,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+      ),
+      child: Text(
+        sizeStr,
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 10,
+          color: AppColors.textMuted,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlainTextBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingS,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+      ),
+      child: Text(
+        'Plain Text',
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 10,
+          color: AppColors.warning,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+  }
+
   Widget _buildContent({
+    required WidgetRef ref,
     required String output,
     required bool isValid,
     required bool isEmpty,
     required String errorMessage,
+    required bool disableSyntaxHighlighting,
+    required bool isOnDemandOutput,
   }) {
     if (isEmpty) {
       return _buildPlaceholder();
@@ -99,7 +176,50 @@ class JsonOutputArea extends ConsumerWidget {
       return _buildError(errorMessage);
     }
 
+    // For on-demand output, we need to generate it async
+    if (isOnDemandOutput && output.isEmpty) {
+      return _buildOnDemandOutput(ref, disableSyntaxHighlighting);
+    }
+
+    // Use plain text for large files to avoid UI lag
+    if (disableSyntaxHighlighting) {
+      return _buildPlainTextJson(output);
+    }
+
     return _buildHighlightedJson(output);
+  }
+
+  Widget _buildOnDemandOutput(WidgetRef ref, bool disableSyntaxHighlighting) {
+    return FutureBuilder<String>(
+      future: ref.read(jsonAnalyzerProvider.notifier).getFormattedOutput(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(strokeWidth: 2),
+                SizedBox(height: AppDimensions.paddingM),
+                Text(
+                  'Generating output...',
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return _buildPlaceholder();
+        }
+
+        final output = snapshot.data!;
+        if (disableSyntaxHighlighting) {
+          return _buildPlainTextJson(output);
+        }
+        return _buildHighlightedJson(output);
+      },
+    );
   }
 
   Widget _buildPlaceholder() {
@@ -147,6 +267,22 @@ class JsonOutputArea extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Plain text rendering for large JSON files.
+  /// Avoids expensive syntax highlighting for better performance.
+  Widget _buildPlainTextJson(String output) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppDimensions.paddingM),
+      child: SelectableText(
+        output,
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: AppDimensions.fontSizeM,
+          color: AppColors.textPrimary,
+          height: 1.5,
+        ),
       ),
     );
   }

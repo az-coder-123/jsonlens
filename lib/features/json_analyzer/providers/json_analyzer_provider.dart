@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/performance_constants.dart';
 import '../../../core/utils/json_differ.dart';
 import '../../../core/utils/json_formatter.dart';
 import '../../../core/utils/json_searcher.dart';
@@ -15,6 +14,7 @@ import '../models/json_statistics.dart';
 /// StateNotifier for managing JSON analyzer state.
 ///
 /// Handles input changes, formatting, minification, and validation.
+/// Optimized for large JSON files with configurable thresholds.
 class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
   JsonAnalyzerNotifier() : super(const JsonAnalyzerState());
 
@@ -25,10 +25,29 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     // Increment validation id to allow cancellation of stale validations.
     final myId = ++_validationId;
 
+    final inputSize = value.length;
+
+    // Determine mode based on input size thresholds
+    final isLarge =
+        inputSize > PerformanceConstants.processingIndicatorThreshold;
+    final isOnDemandOutput =
+        inputSize > PerformanceConstants.onDemandOutputThreshold;
+    final disableSyntaxHighlighting =
+        inputSize > PerformanceConstants.syntaxHighlightingThreshold;
+    final isReadOnlyMode =
+        inputSize > PerformanceConstants.readOnlyInputThreshold;
+
     // Update the input immediately so the UI reflects the change.
-    // Show loading indicator for large payloads (>50KB)
-    final isLarge = value.length > 50000;
-    state = state.copyWith(input: value, output: '', isProcessing: isLarge);
+    // For large inputs, don't store output yet (on-demand generation).
+    state = state.copyWith(
+      input: value,
+      output: '',
+      isProcessing: isLarge,
+      inputSize: inputSize,
+      isOnDemandOutput: isOnDemandOutput,
+      disableSyntaxHighlighting: disableSyntaxHighlighting,
+      isReadOnlyMode: isReadOnlyMode,
+    );
 
     // Quick empty check
     if (value.trim().isEmpty) {
@@ -38,6 +57,10 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
           isEmpty: true,
         ),
         isProcessing: false,
+        inputSize: 0,
+        isOnDemandOutput: false,
+        disableSyntaxHighlighting: false,
+        isReadOnlyMode: false,
       );
       return;
     }
@@ -65,9 +88,15 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
 
     if (validationResult.isValid) {
       try {
-        final formatted = await JsonFormatter.formatObjectAsync(
-          validationResult.data,
-        );
+        // For on-demand output mode, skip caching formatted output
+        // to save memory on large inputs.
+        String formatted = '';
+        if (!isOnDemandOutput) {
+          formatted = await JsonFormatter.formatObjectAsync(
+            validationResult.data,
+          );
+        }
+
         if (myId != _validationId) return; // check again after async work
         state = state.copyWith(
           input: value,
@@ -81,6 +110,17 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     } else {
       state = state.copyWith(output: '', isProcessing: false);
     }
+  }
+
+  /// Gets the formatted output, generating on-demand if needed.
+  Future<String> getFormattedOutput() async {
+    if (state.output.isNotEmpty) {
+      return state.output;
+    }
+    if (state.parsedData != null) {
+      return await JsonFormatter.formatObjectAsync(state.parsedData);
+    }
+    return '';
   }
 
   /// Formats the current input JSON with 2-space indentation.
@@ -100,14 +140,15 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     }
   }
 
-  /// Minifies the current input JSON.
+  /// Minifies the current input JSON (async, using isolate).
   Future<void> minify() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
       String minified;
       if (state.parsedData != null) {
-        minified = JsonEncoder().convert(state.parsedData);
+        // Use async version to avoid blocking UI
+        minified = await JsonFormatter.minifyObjectAsync(state.parsedData);
       } else {
         minified = await JsonFormatter.minifyAsync(state.input);
       }
@@ -117,12 +158,13 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     }
   }
 
-  /// Sorts all keys in the JSON alphabetically.
+  /// Sorts all keys in the JSON alphabetically (async, using isolate).
   Future<void> sortKeys({bool ascending = true}) async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
-      final sorted = JsonTransformer.sortKeys(
+      // Use async version for large data
+      final sorted = await JsonTransformerAsync.sortKeysAsync(
         state.parsedData,
         ascending: ascending,
       );
@@ -133,12 +175,15 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     }
   }
 
-  /// Removes null values from the JSON.
+  /// Removes null values from the JSON (async, using isolate).
   Future<void> removeNulls() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
-      final cleaned = JsonTransformer.removeNulls(state.parsedData);
+      // Use async version for large data
+      final cleaned = await JsonTransformerAsync.removeNullsAsync(
+        state.parsedData,
+      );
       final formatted = await JsonFormatter.formatObjectAsync(cleaned);
       state = state.copyWith(input: formatted, output: formatted);
     } catch (_) {
@@ -146,12 +191,15 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     }
   }
 
-  /// Removes empty values from the JSON.
+  /// Removes empty values from the JSON (async, using isolate).
   Future<void> removeEmpty() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
-      final cleaned = JsonTransformer.removeEmpty(state.parsedData);
+      // Use async version for large data
+      final cleaned = await JsonTransformerAsync.removeEmptyAsync(
+        state.parsedData,
+      );
       if (cleaned != null) {
         final formatted = await JsonFormatter.formatObjectAsync(cleaned);
         state = state.copyWith(input: formatted, output: formatted);
@@ -161,12 +209,15 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     }
   }
 
-  /// Flattens the JSON structure.
+  /// Flattens the JSON structure (async, using isolate).
   Future<void> flatten() async {
     if (!state.isValid || state.isEmpty) return;
 
     try {
-      final flattened = JsonTransformer.flatten(state.parsedData);
+      // Use async version for large data
+      final flattened = await JsonTransformerAsync.flattenAsync(
+        state.parsedData,
+      );
       final formatted = await JsonFormatter.formatObjectAsync(flattened);
       state = state.copyWith(input: formatted, output: formatted);
     } catch (_) {
@@ -234,6 +285,28 @@ final inputProvider = Provider<String>((ref) {
 /// Provider for checking if processing is in progress.
 final isProcessingProvider = Provider<bool>((ref) {
   return ref.watch(jsonAnalyzerProvider.select((s) => s.isProcessing));
+});
+
+/// Provider for input size.
+final inputSizeProvider = Provider<int>((ref) {
+  return ref.watch(jsonAnalyzerProvider.select((s) => s.inputSize));
+});
+
+/// Provider for checking if output is on-demand (not cached).
+final isOnDemandOutputProvider = Provider<bool>((ref) {
+  return ref.watch(jsonAnalyzerProvider.select((s) => s.isOnDemandOutput));
+});
+
+/// Provider for checking if syntax highlighting should be disabled.
+final disableSyntaxHighlightingProvider = Provider<bool>((ref) {
+  return ref.watch(
+    jsonAnalyzerProvider.select((s) => s.disableSyntaxHighlighting),
+  );
+});
+
+/// Provider for checking if read-only mode is enabled.
+final isReadOnlyModeProvider = Provider<bool>((ref) {
+  return ref.watch(jsonAnalyzerProvider.select((s) => s.isReadOnlyMode));
 });
 
 // ============================================================================

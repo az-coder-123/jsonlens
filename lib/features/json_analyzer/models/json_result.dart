@@ -74,6 +74,7 @@ class JsonAnalyzerState {
   final String input;
 
   /// The formatted JSON output.
+  /// For large inputs, this may be empty and generated on-demand.
   final String output;
 
   /// The validation result.
@@ -85,6 +86,19 @@ class JsonAnalyzerState {
   /// Whether async processing is in progress.
   final bool isProcessing;
 
+  /// Size of the input in bytes (for threshold checks).
+  final int inputSize;
+
+  /// Whether output is generated on-demand (not cached).
+  /// True for large inputs to save memory.
+  final bool isOnDemandOutput;
+
+  /// Whether input should be read-only (for very large files).
+  final bool isReadOnlyMode;
+
+  /// Whether syntax highlighting should be disabled.
+  final bool disableSyntaxHighlighting;
+
   const JsonAnalyzerState({
     this.input = '',
     this.output = '',
@@ -94,6 +108,10 @@ class JsonAnalyzerState {
     ),
     this.selectedTabIndex = 0,
     this.isProcessing = false,
+    this.inputSize = 0,
+    this.isOnDemandOutput = false,
+    this.isReadOnlyMode = false,
+    this.disableSyntaxHighlighting = false,
   });
 
   /// Whether the current JSON is valid.
@@ -115,6 +133,10 @@ class JsonAnalyzerState {
     JsonValidationResult? validationResult,
     int? selectedTabIndex,
     bool? isProcessing,
+    int? inputSize,
+    bool? isOnDemandOutput,
+    bool? isReadOnlyMode,
+    bool? disableSyntaxHighlighting,
   }) {
     return JsonAnalyzerState(
       input: input ?? this.input,
@@ -122,6 +144,11 @@ class JsonAnalyzerState {
       validationResult: validationResult ?? this.validationResult,
       selectedTabIndex: selectedTabIndex ?? this.selectedTabIndex,
       isProcessing: isProcessing ?? this.isProcessing,
+      inputSize: inputSize ?? this.inputSize,
+      isOnDemandOutput: isOnDemandOutput ?? this.isOnDemandOutput,
+      isReadOnlyMode: isReadOnlyMode ?? this.isReadOnlyMode,
+      disableSyntaxHighlighting:
+          disableSyntaxHighlighting ?? this.disableSyntaxHighlighting,
     );
   }
 
@@ -133,7 +160,11 @@ class JsonAnalyzerState {
         other.output == output &&
         other.validationResult == validationResult &&
         other.selectedTabIndex == selectedTabIndex &&
-        other.isProcessing == isProcessing;
+        other.isProcessing == isProcessing &&
+        other.inputSize == inputSize &&
+        other.isOnDemandOutput == isOnDemandOutput &&
+        other.isReadOnlyMode == isReadOnlyMode &&
+        other.disableSyntaxHighlighting == disableSyntaxHighlighting;
   }
 
   @override
@@ -144,6 +175,10 @@ class JsonAnalyzerState {
       validationResult,
       selectedTabIndex,
       isProcessing,
+      inputSize,
+      isOnDemandOutput,
+      isReadOnlyMode,
+      disableSyntaxHighlighting,
     );
   }
 }
