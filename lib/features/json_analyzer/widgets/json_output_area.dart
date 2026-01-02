@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
@@ -7,18 +9,40 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/performance_constants.dart';
 import '../providers/json_analyzer_provider.dart';
 import 'processing_overlay.dart';
 
 /// Output area widget for displaying formatted JSON with syntax highlighting.
 ///
 /// For large JSON files (>1MB), syntax highlighting is disabled and plain
-/// text is displayed instead to maintain UI responsiveness.
-class JsonOutputArea extends ConsumerWidget {
+/// text is displayed instead to maintain UI responsiveness. For large plain
+/// text outputs we use virtualization (ListView.builder) to render only the
+/// visible lines, significantly reducing memory and layout cost.
+class JsonOutputArea extends ConsumerStatefulWidget {
   const JsonOutputArea({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<JsonOutputArea> createState() => _JsonOutputAreaState();
+}
+
+class _JsonOutputAreaState extends ConsumerState<JsonOutputArea> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final output = ref.watch(outputProvider);
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
@@ -55,6 +79,7 @@ class JsonOutputArea extends ConsumerWidget {
                   errorMessage: errorMessage,
                   disableSyntaxHighlighting: disableSyntaxHighlighting,
                   isOnDemandOutput: isOnDemandOutput,
+                  inputSize: inputSize,
                 ),
                 if (isProcessing)
                   const ProcessingOverlay(message: 'Formatting JSON...'),
@@ -167,6 +192,7 @@ class JsonOutputArea extends ConsumerWidget {
     required String errorMessage,
     required bool disableSyntaxHighlighting,
     required bool isOnDemandOutput,
+    required int inputSize,
   }) {
     if (isEmpty) {
       return _buildPlaceholder();
@@ -178,18 +204,22 @@ class JsonOutputArea extends ConsumerWidget {
 
     // For on-demand output, we need to generate it async
     if (isOnDemandOutput && output.isEmpty) {
-      return _buildOnDemandOutput(ref, disableSyntaxHighlighting);
+      return _buildOnDemandOutput(ref, disableSyntaxHighlighting, inputSize);
     }
 
     // Use plain text for large files to avoid UI lag
     if (disableSyntaxHighlighting) {
-      return _buildPlainTextJson(output);
+      return _buildPlainTextJson(output, inputSize);
     }
 
     return _buildHighlightedJson(output);
   }
 
-  Widget _buildOnDemandOutput(WidgetRef ref, bool disableSyntaxHighlighting) {
+  Widget _buildOnDemandOutput(
+    WidgetRef ref,
+    bool disableSyntaxHighlighting,
+    int inputSize,
+  ) {
     return FutureBuilder<String>(
       future: ref.read(jsonAnalyzerProvider.notifier).getFormattedOutput(),
       builder: (context, snapshot) {
@@ -215,7 +245,7 @@ class JsonOutputArea extends ConsumerWidget {
 
         final output = snapshot.data!;
         if (disableSyntaxHighlighting) {
-          return _buildPlainTextJson(output);
+          return _buildPlainTextJson(output, inputSize);
         }
         return _buildHighlightedJson(output);
       },
@@ -273,17 +303,43 @@ class JsonOutputArea extends ConsumerWidget {
 
   /// Plain text rendering for large JSON files.
   /// Avoids expensive syntax highlighting for better performance.
-  Widget _buildPlainTextJson(String output) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
-      child: SelectableText(
-        output,
-        style: GoogleFonts.jetBrainsMono(
-          fontSize: AppDimensions.fontSizeM,
-          color: AppColors.textPrimary,
-          height: 1.5,
+  /// For sufficiently large outputs we use a virtualized list to render
+  /// only visible lines and reduce memory & layout cost.
+  Widget _buildPlainTextJson(String output, int inputSize) {
+    // Split by lines once and reuse.
+    final lines = const LineSplitter().convert(output);
+
+    // If output is small enough, render as a single SelectableText for
+    // convenient selection and copy behavior.
+    if (inputSize <= PerformanceConstants.plainTextVirtualizationThreshold) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(AppDimensions.paddingM),
+        child: SelectableText(
+          output,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: AppDimensions.fontSizeM,
+            color: AppColors.textPrimary,
+            height: 1.5,
+          ),
         ),
-      ),
+      );
+    }
+
+    // For larger outputs, use ListView.builder to only build visible lines.
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(AppDimensions.paddingM),
+      itemCount: lines.length,
+      itemBuilder: (context, index) {
+        return Text(
+          lines[index],
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: AppDimensions.fontSizeM,
+            color: AppColors.textPrimary,
+            height: 1.5,
+          ),
+        );
+      },
     );
   }
 

@@ -53,6 +53,10 @@ abstract final class PerformanceConstants {
   /// Batch size for lazy loading tree children.
   static const int treeLazyLoadBatchSize = 50;
 
+  /// Threshold (bytes) above which plain-text output uses virtualization
+  /// (ListView.builder) to render only visible lines. Defaults to 200 KB.
+  static const int plainTextVirtualizationThreshold = 200 * 1024; // 200 KB
+
   // ============================================================================
   // Debounce & Timing
   // ============================================================================
