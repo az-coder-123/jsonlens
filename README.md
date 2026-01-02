@@ -12,6 +12,46 @@
 - Toolbar: Format, Minify, Clear, Copy, Paste
 - Validation indicator: Valid (green) / Invalid (red)
 
+## 📥 Downloads
+
+Download pre-built release binaries for quick installation on your desktop. All releases are provided as-is from the repository.
+
+### macOS
+
+[![macOS Download](https://img.shields.io/badge/macOS-jsonlens.app.zip-blue?style=flat-square&logo=apple)](release/macos/jsonlens.app.zip)
+
+**Installation:**
+1. Download `jsonlens.app.zip`
+2. Unzip the archive to extract `jsonlens.app`
+3. Move `jsonlens.app` to your **/Applications** folder
+4. Right-click and select **Open** to launch (macOS security prompt may appear on first run)
+
+> **Note:** If you encounter security warnings, open System Preferences → Security & Privacy → General and click "Open Anyway".
+
+### Windows
+
+[![Windows Download](https://img.shields.io/badge/Windows-jsonlens.zip-blue?style=flat-square&logo=windows)](release/windows/jsonlens.zip)
+
+**Installation:**
+1. Download `jsonlens.zip`
+2. Extract the contents to a folder of your choice
+3. Run `jsonlens.exe` from the extracted folder
+4. Optionally create a desktop shortcut for quick access
+
+> **Note:** Windows Defender may flag unsigned binaries. You can safely run the application by clicking "More info" → "Run anyway".
+
+### Build from Source
+
+For mobile platforms (iOS, Android) or custom builds, please refer to the **[Build Instructions](#-build---debug--release-by-platform)** section below.
+
+---
+
+### Release Information
+
+- **Artifacts:** Release binaries are stored in the `release/` directory of this repository
+- **Updates:** Check this repository for the latest releases and updates
+- **Signed Builds:** Currently, releases are unsigned. For signed installers or notarized macOS builds, please contact the maintainers or check official release channels
+
 ## 🔒 Privacy & Offline-first
 - **Local-first operation:** The app runs entirely locally and does not require a network connection to perform JSON editing, validation, formatting, or tree browsing.
 - **Network use is limited:** The app only uses the network to check for a *new app version* (fetching a small metadata record). This check is **cached** (default TTL 1 hour) to avoid frequent requests.
@@ -44,13 +84,7 @@ _Showcase: concise, professional visual overview of key UI flows._
 
 **Note:** For additional images see the `/screenshots` folder in the repository.
 
-## � Downloads
-- **macOS** (zip): [jsonlens.app.zip](release/macos/jsonlens.app.zip) — unzip and open `jsonlens.app`; optionally move it to **/Applications** to install.
-- **Windows** (zip): [jsonlens.zip](release/windows/jsonlens.zip) — unzip and run the executable from the unpacked folder.
-
-> Release artifacts are stored under the `release/` folder in this repository. Check the release notes or the `release/` subfolders for the most recent build. If you need signed installers or notarized macOS builds, contact the maintainers or check official release channels.
-
-## �🛠️ Requirements
+## 🛠️ Requirements
 - Flutter SDK (stable)
 - For iOS/macOS builds: macOS with Xcode and CocoaPods
 - For Windows builds: Visual Studio (Desktop development workload) and required toolchain
