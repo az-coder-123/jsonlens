@@ -12,9 +12,21 @@ abstract final class AppStrings {
   static const String clear = 'Clear';
   static const String copy = 'Copy';
   static const String paste = 'Paste';
+  static const String save = 'Save';
+  static const String open = 'Open';
 
   // Status messages
   static const String validJson = 'Valid JSON';
+
+  // Save feedback
+  static const String savedToFile = 'Saved to file';
+  static const String saveCancelled = 'Save cancelled';
+  static const String saveFailed = 'Failed to save file';
+
+  // Load feedback
+  static const String loadedFromFile = 'Loaded from file';
+  static const String loadCancelled = 'Open cancelled';
+  static const String loadFailed = 'Failed to open file';
   static const String invalidJson = 'Invalid JSON';
   static const String emptyInput = 'Enter JSON to analyze';
 

@@ -7,7 +7,7 @@ import 'package:jsonlens/features/json_analyzer/providers/json_analyzer_provider
 import 'package:jsonlens/features/json_analyzer/widgets/json_output_area.dart';
 
 class FakeNotifier extends StateNotifier<JsonAnalyzerState> {
-  FakeNotifier(JsonAnalyzerState state) : super(state);
+  FakeNotifier(super.state);
 }
 
 void main() {
