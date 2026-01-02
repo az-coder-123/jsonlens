@@ -137,29 +137,6 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
           tooltip: 'Advanced Tools',
         ),
         IconButton(
-          icon: const Icon(Icons.system_update_alt),
-          tooltip: 'Check for updates',
-          onPressed: () async {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Checking for updates...')),
-            );
-            await ref
-                .read(versionNotifierProvider.notifier)
-                .checkForUpdateIfConnected(force: true);
-            if (!mounted) return;
-            final st = ref.read(versionNotifierProvider);
-            if (st.hasNew) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('A new version is available')),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('You are up to date')),
-              );
-            }
-          },
-        ),
-        IconButton(
           icon: const Icon(Icons.info_outline),
           tooltip: 'About',
           onPressed: () async {
