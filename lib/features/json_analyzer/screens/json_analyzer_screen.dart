@@ -37,6 +37,11 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
   bool _showSearch = false;
   bool _showTools = false;
 
+  // Preserve the input area's state (TextEditingController, selection, etc.)
+  // when the layout rebuilds or re-parents the widget (e.g. switching between
+  // horizontal and vertical splits).
+  final GlobalKey _inputKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -254,7 +259,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       child: Row(
         children: [
-          const Expanded(child: JsonInputArea()),
+          Expanded(child: JsonInputArea(key: _inputKey)),
           const SizedBox(width: AppDimensions.paddingM),
           Expanded(child: _buildOutputTabs()),
         ],
@@ -268,7 +273,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       child: Column(
         children: [
-          const Expanded(child: JsonInputArea()),
+          Expanded(child: JsonInputArea(key: _inputKey)),
           const SizedBox(height: AppDimensions.paddingM),
           Expanded(child: _buildOutputTabs()),
         ],
