@@ -271,17 +271,16 @@ This project is licensed under the **MIT License** — see the [LICENSE](./LICEN
 
 **Company:** NAVARO DIGITAL TECHNOLOGY COMPANY LIMITED
 
-**Microsoft Teams:** pnvinh83@gmail.com  
-**WhatsApp:** +84 90 866 28 65  
-**Telegram:** +84 90 866 28 65  
-**Zalo:** +84 90 866 28 65
+**Contact**
+- **Microsoft Teams:** pnvinh83@gmail.com
+- **WhatsApp / Telegram / Zalo:** +84 90 866 28 65
 
-**Tech stacks (popular / commonly used):**
-
-- **Frontend:** Flutter, React, NextJS, React Native, Vue.js, Angular, TypeScript, JavaScript, HTML5, CSS3,...
+**Primary Technologies**
+- **Frontend:** Flutter, React, Next.js, React Native, Vue.js, Angular, Svelte, TypeScript, JavaScript, HTML5, CSS3
 - **Backend:** Node.js (Express, NestJS), Python (FastAPI), Go, .NET (C#), PHP (Laravel)
 - **Databases & Storage:** PostgreSQL, MySQL, MongoDB, Redis, SQLite, Amazon S3
 - **DevOps & CI/CD:** Docker, Kubernetes, GitHub Actions, GitLab CI, CircleCI, Terraform
-- **Cloud & Services:** AWS, GCP, Azure, Firebase
+- **Cloud Providers:** AWS, Google Cloud Platform (GCP), Microsoft Azure, Firebase
 
-**Partnership & Recruitment Inquiries:** We warmly welcome opportunities for investment, strategic collaboration, and recruitment. If you are interested in investing, partnering, or hiring, please contact us using the details above and we will respond promptly.
+**Partnership & Recruitment Inquiries**
+NAVARO DIGITAL TECHNOLOGY COMPANY LIMITED welcomes discussions with investors, strategic partners, and organizations seeking technical collaboration or recruitment. For investment proposals, partnership opportunities, or hiring inquiries, please contact us using the channels above and include a brief summary of your request. Our team aims to respond within two business days.
