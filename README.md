@@ -273,7 +273,8 @@ This project is licensed under the **MIT License** — see the [LICENSE](./LICEN
 
 **Contact**
 - **Microsoft Teams:** pnvinh83@gmail.com
-- **WhatsApp / Telegram / Zalo:** +84 90 866 28 65
+- **Telegram:** @vinhpn
+- **WhatsApp / Zalo:** +84 90 866 28 65
 
 **Primary Technologies**
 - **Frontend:** Flutter, React, Next.js, React Native, Vue.js, Angular, Svelte, TypeScript, JavaScript, HTML5, CSS3
