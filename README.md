@@ -278,8 +278,8 @@ This project is licensed under the **MIT License** — see the [LICENSE](./LICEN
 
 **Tech stacks (popular / commonly used):**
 
-- **Frontend:** Flutter, React, React Native, Vue.js, Angular, Svelte, TypeScript, JavaScript, HTML5, CSS3
-- **Backend:** Node.js (Express, NestJS), Deno, Python (Django, Flask, FastAPI), Ruby on Rails, Java (Spring), Go, .NET (C#), PHP (Laravel)
+- **Frontend:** Flutter, React, NextJS, React Native, Vue.js, Angular, TypeScript, JavaScript, HTML5, CSS3,...
+- **Backend:** Node.js (Express, NestJS), Python (FastAPI), Go, .NET (C#), PHP (Laravel)
 - **Databases & Storage:** PostgreSQL, MySQL, MongoDB, Redis, SQLite, Amazon S3
 - **DevOps & CI/CD:** Docker, Kubernetes, GitHub Actions, GitLab CI, CircleCI, Terraform
 - **Cloud & Services:** AWS, GCP, Azure, Firebase
