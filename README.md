@@ -284,4 +284,4 @@ This project is licensed under the **MIT License** — see the [LICENSE](./LICEN
 - **DevOps & CI/CD:** Docker, Kubernetes, GitHub Actions, GitLab CI, CircleCI, Terraform
 - **Cloud & Services:** AWS, GCP, Azure, Firebase
 
-If you prefer the contact details in English or want to add a preferred contact person or business hours, tell me and I'll update it.
+**Partnership & Recruitment Inquiries:** We warmly welcome opportunities for investment, strategic collaboration, and recruitment. If you are interested in investing, partnering, or hiring, please contact us using the details above and we will respond promptly.
