@@ -264,3 +264,24 @@ flutter run --profile
 
 ## 📖 License
 This project is licensed under the **MIT License** — see the [LICENSE](./LICENSE) file for details.
+
+---
+
+## 📬 Contact & Tech Stack
+
+**Company:** NAVARO DIGITAL TECHNOLOGY COMPANY LIMITED
+
+**Microsoft Teams:** pnvinh83@gmail.com  
+**WhatsApp:** +84 90 866 28 65  
+**Telegram:** +84 90 866 28 65  
+**Zalo:** +84 90 866 28 65
+
+**Tech stacks (popular / commonly used):**
+
+- **Frontend:** Flutter, React, React Native, Vue.js, Angular, Svelte, TypeScript, JavaScript, HTML5, CSS3
+- **Backend:** Node.js (Express, NestJS), Deno, Python (Django, Flask, FastAPI), Ruby on Rails, Java (Spring), Go, .NET (C#), PHP (Laravel)
+- **Databases & Storage:** PostgreSQL, MySQL, MongoDB, Redis, SQLite, Amazon S3
+- **DevOps & CI/CD:** Docker, Kubernetes, GitHub Actions, GitLab CI, CircleCI, Terraform
+- **Cloud & Services:** AWS, GCP, Azure, Firebase
+
+If you prefer the contact details in English or want to add a preferred contact person or business hours, tell me and I'll update it.
