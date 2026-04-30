@@ -59,6 +59,10 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
   bool _caseSensitive = false;
   bool _useRegex = false;
 
+  /// Tracks the last text content seen, so we can skip recomputation when
+  /// the controller fires due to a selection change (not a text change).
+  String _lastText = '';
+
   /// Start offset of every match in the current text.
   List<int> _matchStarts = [];
 
@@ -74,14 +78,18 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
   @override
   void initState() {
     super.initState();
-    _findController.addListener(_updateMatches);
+    // Query field changes → always full recompute.
+    _findController.addListener(_onQueryChanged);
+    // Editor text changes → recompute only when actual text changes, not selection.
+    widget.controller.addListener(_onEditorChanged);
   }
 
   @override
   void dispose() {
     _findController
-      ..removeListener(_updateMatches)
+      ..removeListener(_onQueryChanged)
       ..dispose();
+    widget.controller.removeListener(_onEditorChanged);
     _replaceController.dispose();
     _findFocus.dispose();
     super.dispose();
@@ -91,9 +99,26 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
   // Match computation
   // ---------------------------------------------------------------------------
 
-  void _updateMatches() {
+  /// Called when the find query text changes — always recomputes from scratch.
+  void _onQueryChanged() {
+    _lastText = ''; // reset so _recompute always runs
+    _recompute();
+  }
+
+  /// Called when the editor controller fires — skips if only selection changed.
+  void _onEditorChanged() {
+    final text = widget.controller.text;
+    if (text == _lastText) return; // selection-only change; do nothing
+    _recompute();
+  }
+
+  /// Recomputes all matches from the current query and editor text,
+  /// updates [_matchStarts], [_matchLengths], and notifies callbacks.
+  /// Resets [_currentIndex] to the first match.
+  void _recompute() {
     final query = _findController.text;
     final text = widget.controller.text;
+    _lastText = text;
 
     if (query.isEmpty) {
       setState(() {
@@ -263,7 +288,7 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
           : const TextSelection.collapsed(offset: 0),
     );
     widget.onTextReplaced(newText);
-    _updateMatches();
+    _onQueryChanged(); // recompute after text was replaced
   }
 
   void _showSnackbar(String message) {
@@ -326,7 +351,7 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
           active: _caseSensitive,
           onPressed: () => setState(() {
             _caseSensitive = !_caseSensitive;
-            _updateMatches();
+            _onQueryChanged();
           }),
         ),
         _toggleBtn(
@@ -335,7 +360,7 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
           active: _useRegex,
           onPressed: () => setState(() {
             _useRegex = !_useRegex;
-            _updateMatches();
+            _onQueryChanged();
           }),
         ),
         _iconBtn(
