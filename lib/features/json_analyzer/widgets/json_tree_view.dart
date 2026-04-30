@@ -301,12 +301,16 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     switch (action) {
       case TreeNodeAction.delete:
         await _deleteNode(parsedData, segments);
+        break;
       case TreeNodeAction.addKey:
         await _addKey(parsedData, segments);
+        break;
       case TreeNodeAction.addItem:
         await _addItem(parsedData, segments);
+        break;
       case TreeNodeAction.duplicate:
         await _duplicateNode(parsedData, segments);
+        break;
     }
   }
 
@@ -757,7 +761,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     return BreadcrumbBar(
       selectedPath: _selectedPath,
       buildPath: _pathFromSegments,
-      onPathSelected: (path) => setState(() => _selectedPath = path),
+      onPathSelected: _updateSelectedPath,
     );
   }
 
