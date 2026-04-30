@@ -11,7 +11,6 @@ import '../providers/json_analyzer_provider.dart';
 import '../widgets/advanced_toolbar.dart';
 import '../widgets/json_compare_panel.dart';
 import '../widgets/json_input_area.dart';
-import '../widgets/json_output_area.dart';
 import '../widgets/json_path_query_panel.dart';
 import '../widgets/json_search_panel.dart';
 import '../widgets/json_statistics_panel.dart';
@@ -31,8 +30,7 @@ class JsonAnalyzerScreen extends ConsumerStatefulWidget {
 }
 
 class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
-    with TickerProviderStateMixin {
-  late final TabController _outputTabController;
+    with SingleTickerProviderStateMixin {
   late final TabController _toolsTabController;
   bool _showSearch = false;
   bool _showTools = false;
@@ -45,9 +43,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
   @override
   void initState() {
     super.initState();
-    _outputTabController = TabController(length: 2, vsync: this);
     _toolsTabController = TabController(length: 4, vsync: this);
-    _outputTabController.addListener(_onTabChanged);
 
     // Trigger a background version check (non-blocking)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -61,18 +57,8 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
 
   @override
   void dispose() {
-    _outputTabController.removeListener(_onTabChanged);
-    _outputTabController.dispose();
     _toolsTabController.dispose();
     super.dispose();
-  }
-
-  void _onTabChanged() {
-    if (!_outputTabController.indexIsChanging) {
-      ref
-          .read(jsonAnalyzerProvider.notifier)
-          .setSelectedTab(_outputTabController.index);
-    }
   }
 
   void _showMessage(String message) {
@@ -261,7 +247,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
         children: [
           Expanded(child: JsonInputArea(key: _inputKey)),
           const SizedBox(width: AppDimensions.paddingM),
-          Expanded(child: _buildOutputTabs()),
+          Expanded(child: _buildOutputPanel()),
         ],
       ),
     );
@@ -275,260 +261,41 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
         children: [
           Expanded(child: JsonInputArea(key: _inputKey)),
           const SizedBox(height: AppDimensions.paddingM),
-          Expanded(child: _buildOutputTabs()),
+          Expanded(child: _buildOutputPanel()),
         ],
       ),
     );
   }
 
-  /// Output area with tabs for Formatted and Tree View.
-  Widget _buildOutputTabs() {
+  /// Output panel showing the JSON tree view.
+  Widget _buildOutputPanel() {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceVariant,
         borderRadius: BorderRadius.circular(AppDimensions.radiusM),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        children: [
-          _buildTabBar(),
-          const Divider(height: 1),
-          Expanded(
-            child: TabBarView(
-              controller: _outputTabController,
-              children: const [_FormattedTabContent(), _TreeViewTabContent()],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabBar() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppDimensions.radiusM),
-        ),
-      ),
-      child: TabBar(
-        controller: _outputTabController,
-        tabs: const [
-          Tab(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.code, size: AppDimensions.iconSizeS),
-                SizedBox(width: AppDimensions.paddingXS),
-                Text(AppStrings.formattedTab),
-              ],
-            ),
-          ),
-          Tab(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.account_tree, size: AppDimensions.iconSizeS),
-                SizedBox(width: AppDimensions.paddingXS),
-                Text(AppStrings.treeViewTab),
-              ],
-            ),
-          ),
-        ],
-        indicatorSize: TabBarIndicatorSize.tab,
-        dividerColor: Colors.transparent,
-      ),
+      child: const _TreeContent(),
     );
   }
 }
 
-/// Content for the Formatted JSON tab without header.
-class _FormattedTabContent extends ConsumerWidget {
-  const _FormattedTabContent();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final output = ref.watch(outputProvider);
-    final isValid = ref.watch(isValidProvider);
-    final isEmpty = ref.watch(isEmptyProvider);
-    final errorMessage = ref.watch(errorMessageProvider);
-
-    return _OutputContent(
-      output: output,
-      isValid: isValid,
-      isEmpty: isEmpty,
-      errorMessage: errorMessage,
-      child: const JsonOutputArea(),
-    );
-  }
-}
-
-/// Content for the Tree View tab without header.
-class _TreeViewTabContent extends ConsumerWidget {
-  const _TreeViewTabContent();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isValid = ref.watch(isValidProvider);
-    final isEmpty = ref.watch(isEmptyProvider);
-
-    return _OutputContent(
-      output: '',
-      isValid: isValid,
-      isEmpty: isEmpty,
-      errorMessage: '',
-      child: const JsonTreeViewWidget(),
-    );
-  }
-}
-
-/// Wrapper for output content that handles the container styling.
-class _OutputContent extends StatelessWidget {
-  final String output;
-  final bool isValid;
-  final bool isEmpty;
-  final String errorMessage;
-  final Widget child;
-
-  const _OutputContent({
-    required this.output,
-    required this.isValid,
-    required this.isEmpty,
-    required this.errorMessage,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Return the child without the outer container since tabs handle it
-    if (child is JsonOutputArea) {
-      return _FormattedContent(
-        output: output,
-        isValid: isValid,
-        isEmpty: isEmpty,
-        errorMessage: errorMessage,
-      );
-    }
-
-    return _TreeContent(isValid: isValid, isEmpty: isEmpty);
-  }
-}
-
-/// Formatted JSON content without container.
-class _FormattedContent extends ConsumerWidget {
-  final String output;
-  final bool isValid;
-  final bool isEmpty;
-  final String errorMessage;
-
-  const _FormattedContent({
-    required this.output,
-    required this.isValid,
-    required this.isEmpty,
-    required this.errorMessage,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final output = ref.watch(outputProvider);
-    final isValid = ref.watch(isValidProvider);
-    final isEmpty = ref.watch(isEmptyProvider);
-    final errorMessage = ref.watch(errorMessageProvider);
-
-    if (isEmpty) {
-      return _buildPlaceholder();
-    }
-
-    if (!isValid) {
-      return _buildError(errorMessage);
-    }
-
-    return _buildHighlightedJson(output);
-  }
-
-  Widget _buildPlaceholder() {
-    return Center(
-      child: Text(
-        AppStrings.outputPlaceholder,
-        style: TextStyle(
-          fontFamily: 'JetBrains Mono',
-          fontSize: AppDimensions.fontSizeM,
-          color: AppColors.textMuted,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildError(String errorMessage) {
-    return Padding(
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.error_outline,
-                color: AppColors.error,
-                size: AppDimensions.iconSizeM,
-              ),
-              const SizedBox(width: AppDimensions.paddingS),
-              Text(
-                AppStrings.parseError,
-                style: TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: AppDimensions.fontSizeM,
-                  color: AppColors.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppDimensions.paddingS),
-          Text(
-            errorMessage,
-            style: TextStyle(
-              fontFamily: 'JetBrains Mono',
-              fontSize: AppDimensions.fontSizeS,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHighlightedJson(String output) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
-      child: SelectableText(
-        output,
-        style: TextStyle(
-          fontFamily: 'JetBrains Mono',
-          fontSize: AppDimensions.fontSizeM,
-          color: AppColors.textPrimary,
-          height: 1.5,
-        ),
-      ),
-    );
-  }
-}
-
-/// Tree view content without container.
+/// Tree view content that handles empty / invalid / valid states.
 class _TreeContent extends ConsumerWidget {
-  final bool isValid;
-  final bool isEmpty;
-
-  const _TreeContent({required this.isValid, required this.isEmpty});
+  const _TreeContent();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final parsedData = ref.watch(parsedDataProvider);
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
+    final errorMessage = ref.watch(errorMessageProvider);
 
-    if (isEmpty || !isValid || parsedData == null) {
+    if (!isEmpty && !isValid) {
+      return _buildError(errorMessage);
+    }
+
+    if (isEmpty || parsedData == null) {
       return Center(
         child: Text(
           AppStrings.outputPlaceholder,
@@ -542,6 +309,45 @@ class _TreeContent extends ConsumerWidget {
     }
 
     return const JsonTreeViewWidget();
+  }
+
+  Widget _buildError(String message) {
+    return Padding(
+      padding: const EdgeInsets.all(AppDimensions.paddingM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.error_outline,
+                color: AppColors.error,
+                size: AppDimensions.iconSizeM,
+              ),
+              SizedBox(width: AppDimensions.paddingS),
+              Text(
+                AppStrings.parseError,
+                style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: AppDimensions.fontSizeM,
+                  color: AppColors.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppDimensions.paddingS),
+          Text(
+            message,
+            style: const TextStyle(
+              fontFamily: 'JetBrains Mono',
+              fontSize: AppDimensions.fontSizeS,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
