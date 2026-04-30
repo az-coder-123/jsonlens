@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,6 +76,95 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       _searchQuery = '';
       _searchController.clear();
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Inline edit application
+  // -------------------------------------------------------------------------
+
+  /// Parses a JSON-Path like `$.users[0].name` into navigation keys.
+  ///
+  /// Returns a list of [String] (object key) or [int] (array index) segments,
+  /// skipping the leading `$`.
+  List<Object> _pathSegments(String path) {
+    final segments = <Object>[];
+    var rest = path.startsWith(r'$') ? path.substring(1) : path;
+
+    while (rest.isNotEmpty) {
+      if (rest.startsWith('.')) rest = rest.substring(1);
+
+      if (rest.startsWith('[')) {
+        final end = rest.indexOf(']');
+        if (end == -1) break;
+        final idx = int.tryParse(rest.substring(1, end));
+        if (idx != null) segments.add(idx);
+        rest = rest.substring(end + 1);
+      } else {
+        final dotIdx = rest.indexOf('.');
+        final bracketIdx = rest.indexOf('[');
+        final int end;
+        if (dotIdx == -1 && bracketIdx == -1) {
+          end = rest.length;
+        } else if (dotIdx == -1) {
+          end = bracketIdx;
+        } else if (bracketIdx == -1) {
+          end = dotIdx;
+        } else {
+          end = dotIdx < bracketIdx ? dotIdx : bracketIdx;
+        }
+        if (end == 0) break;
+        segments.add(rest.substring(0, end));
+        rest = rest.substring(end);
+      }
+    }
+
+    return segments;
+  }
+
+  /// Navigates [data] using [segments] (all but last), then sets the leaf.
+  ///
+  /// Returns false when the path cannot be resolved.
+  bool _setAtPath(dynamic data, List<Object> segments, dynamic newValue) {
+    if (segments.isEmpty) return false;
+
+    dynamic current = data;
+    for (int i = 0; i < segments.length - 1; i++) {
+      final seg = segments[i];
+      if (seg is String && current is Map<String, dynamic>) {
+        current = current[seg];
+      } else if (seg is int && current is List) {
+        current = current[seg];
+      } else {
+        return false; // path mismatch
+      }
+    }
+
+    final last = segments.last;
+    if (last is String && current is Map<String, dynamic>) {
+      current[last] = newValue;
+      return true;
+    }
+    if (last is int && current is List) {
+      current[last] = newValue;
+      return true;
+    }
+    return false;
+  }
+
+  /// Called by [LazyJsonTree] when a leaf value is edited inline.
+  ///
+  /// Navigates the current parsed data to the node at [path], updates it,
+  /// re-serialises to formatted JSON, and pushes the change to the provider.
+  Future<void> _applyEdit(String path, dynamic newValue) async {
+    final parsedData = ref.read(parsedDataProvider);
+    if (parsedData == null) return;
+
+    final segments = _pathSegments(path);
+    final ok = _setAtPath(parsedData, segments, newValue);
+    if (!ok) return;
+
+    final json = const JsonEncoder.withIndent('  ').convert(parsedData);
+    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
   }
 
   // -------------------------------------------------------------------------
@@ -474,6 +565,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       forceExpandAll: _forceExpandAll,
       sortKeys: settings.sortKeys,
       onPathSelected: (path) => setState(() => _selectedPath = path),
+      onValueChanged: _applyEdit,
     );
   }
 }
