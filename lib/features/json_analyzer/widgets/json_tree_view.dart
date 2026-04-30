@@ -19,16 +19,6 @@ import 'processing_overlay.dart';
 import 'type_filter_bar.dart';
 
 /// Tree view widget for displaying JSON in an expandable/collapsible tree.
-///
-/// Phase 1:
-///   - Search / filter with match highlighting and auto-expand
-///   - Per-node copy button (in LazyJsonTree)
-///   - JSON Path display in the bottom status strip
-///   - Expand All / Collapse All toolbar buttons
-///
-/// Phase 2:
-///   - Sort Keys toggle button (persisted via Settings)
-///   - Node type icons, array index coloring, keyboard nav (in LazyJsonTree)
 class JsonTreeViewWidget extends ConsumerStatefulWidget {
   const JsonTreeViewWidget({super.key});
 
@@ -115,10 +105,6 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       _searchController.clear();
     });
   }
-
-  // -------------------------------------------------------------------------
-  // Bidirectional sync helpers (2.5)
-  // -------------------------------------------------------------------------
 
   /// Computes all ancestor paths of [path] that need to be force-expanded.
   ///
@@ -272,10 +258,6 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
 
     await _commitDataChange(parsedData);
   }
-
-  // -------------------------------------------------------------------------
-  // Node action application (2.3)
-  // -------------------------------------------------------------------------
 
   /// Navigates [data] to the node at exactly [segments].
   dynamic _nodeAtSegments(dynamic data, List<Object> segments) {
