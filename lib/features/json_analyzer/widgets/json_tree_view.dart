@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -97,6 +98,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         children: [
           _buildHeader(context),
           if (_isSearchVisible) _buildSearchBar(),
+          if (_selectedPath.isNotEmpty) _buildBreadcrumbBar(),
           const Divider(height: 1),
           Expanded(
             child: Stack(
@@ -111,7 +113,6 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
               ],
             ),
           ),
-          if (_selectedPath.isNotEmpty) _buildPathStrip(),
         ],
       ),
     );
@@ -307,34 +308,128 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   }
 
   // -------------------------------------------------------------------------
-  // JSON Path strip
+  // Breadcrumb bar
   // -------------------------------------------------------------------------
 
-  Widget _buildPathStrip() {
+  /// Parses a JSON-Path string (e.g. `$.users[0].profile`) into ordered
+  /// segments: `['$', 'users', '[0]', 'profile']`.
+  List<String> _parseBreadcrumbs(String path) {
+    final segments = <String>[];
+    if (path.isEmpty) return segments;
+
+    // Always starts with `$`.
+    segments.add('\$');
+    var rest = path.startsWith('\$') ? path.substring(1) : path;
+
+    while (rest.isNotEmpty) {
+      if (rest.startsWith('.')) rest = rest.substring(1);
+
+      if (rest.startsWith('[')) {
+        // Array index segment like [0].
+        final end = rest.indexOf(']');
+        if (end == -1) break;
+        segments.add(rest.substring(0, end + 1));
+        rest = rest.substring(end + 1);
+      } else {
+        // Named key — read until next `.` or `[`.
+        final dotIdx = rest.indexOf('.');
+        final bracketIdx = rest.indexOf('[');
+        final int end;
+        if (dotIdx == -1 && bracketIdx == -1) {
+          end = rest.length;
+        } else if (dotIdx == -1) {
+          end = bracketIdx;
+        } else if (bracketIdx == -1) {
+          end = dotIdx;
+        } else {
+          end = dotIdx < bracketIdx ? dotIdx : bracketIdx;
+        }
+        if (end == 0) break; // safeguard
+        segments.add(rest.substring(0, end));
+        rest = rest.substring(end);
+      }
+    }
+
+    return segments;
+  }
+
+  /// Reconstructs the JSON-Path string from [segments] up to index [upTo].
+  String _pathFromSegments(List<String> segments, int upTo) {
+    final buf = StringBuffer();
+    for (int i = 0; i <= upTo && i < segments.length; i++) {
+      final seg = segments[i];
+      if (seg == '\$') {
+        buf.write('\$');
+      } else if (seg.startsWith('[')) {
+        buf.write(seg);
+      } else {
+        buf.write('.$seg');
+      }
+    }
+    return buf.toString();
+  }
+
+  Widget _buildBreadcrumbBar() {
+    final segments = _parseBreadcrumbs(_selectedPath);
+
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.paddingM,
-        vertical: 6,
-      ),
+      height: 32,
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
-        borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(AppDimensions.radiusM),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.route, size: 12, color: AppColors.textMuted),
-          const SizedBox(width: 6),
           Expanded(
-            child: Text(
-              _selectedPath,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 11,
-                color: AppColors.textSecondary,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingM,
               ),
-              overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  for (int i = 0; i < segments.length; i++) ...[
+                    _BreadcrumbSegment(
+                      label: segments[i],
+                      isLast: i == segments.length - 1,
+                      isArrayIndex: segments[i].startsWith('['),
+                      onTap: () => setState(
+                        () => _selectedPath = _pathFromSegments(segments, i),
+                      ),
+                    ),
+                    if (i < segments.length - 1)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 2),
+                        child: Icon(
+                          Icons.chevron_right,
+                          size: 12,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          // Copy path button.
+          InkWell(
+            onTap: () async {
+              await Clipboard.setData(ClipboardData(text: _selectedPath));
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('JSON path copied to clipboard'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(4),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingS,
+                vertical: 4,
+              ),
+              child: Icon(Icons.copy, size: 12, color: AppColors.textMuted),
             ),
           ),
         ],
@@ -379,6 +474,68 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       forceExpandAll: _forceExpandAll,
       sortKeys: settings.sortKeys,
       onPathSelected: (path) => setState(() => _selectedPath = path),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Breadcrumb segment widget
+// ---------------------------------------------------------------------------
+
+/// A single clickable segment in the breadcrumb navigation bar.
+///
+/// The last (active) segment is rendered in [AppColors.primary]; ancestor
+/// segments are muted but still tappable so the user can jump up the path.
+class _BreadcrumbSegment extends StatefulWidget {
+  final String label;
+  final bool isLast;
+  final bool isArrayIndex;
+  final VoidCallback onTap;
+
+  const _BreadcrumbSegment({
+    required this.label,
+    required this.isLast,
+    required this.isArrayIndex,
+    required this.onTap,
+  });
+
+  @override
+  State<_BreadcrumbSegment> createState() => _BreadcrumbSegmentState();
+}
+
+class _BreadcrumbSegmentState extends State<_BreadcrumbSegment> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color;
+    if (widget.isLast) {
+      color = AppColors.primary;
+    } else if (_hovered) {
+      color = AppColors.textSecondary;
+    } else {
+      color = AppColors.textMuted;
+    }
+
+    // Array indices ([0]) use a slightly different style.
+    final fontStyle = widget.isArrayIndex ? FontStyle.italic : FontStyle.normal;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Text(
+          widget.label,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 11,
+            color: color,
+            fontStyle: fontStyle,
+            fontWeight: widget.isLast ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
     );
   }
 }
