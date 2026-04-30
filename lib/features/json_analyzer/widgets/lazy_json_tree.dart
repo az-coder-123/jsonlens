@@ -1,53 +1,153 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 
+// ---------------------------------------------------------------------------
+// Search helpers
+// ---------------------------------------------------------------------------
+
+/// Returns true if [key] or [value] (recursively) contains [query] (case-insensitive).
+bool _matchesSearch(String key, dynamic value, String query) {
+  if (query.isEmpty) return false;
+  final q = query.toLowerCase();
+  if (key.toLowerCase().contains(q)) return true;
+  if (value is Map<String, dynamic>) {
+    return value.entries.any((e) => _matchesSearch(e.key, e.value, q));
+  }
+  if (value is List) {
+    for (int i = 0; i < value.length; i++) {
+      if (_matchesSearch('[$i]', value[i], q)) return true;
+    }
+    return false;
+  }
+  return value.toString().toLowerCase().contains(q);
+}
+
+/// Builds a widget that highlights [query] within [text] using the given [style].
+Widget _buildHighlightedText(String text, String query, TextStyle style) {
+  if (query.isEmpty) {
+    return Text(text, style: style, overflow: TextOverflow.ellipsis, maxLines: 1);
+  }
+  final lowerText = text.toLowerCase();
+  final lowerQuery = query.toLowerCase();
+  final index = lowerText.indexOf(lowerQuery);
+  if (index == -1) {
+    return Text(text, style: style, overflow: TextOverflow.ellipsis, maxLines: 1);
+  }
+  return RichText(
+    overflow: TextOverflow.ellipsis,
+    maxLines: 1,
+    text: TextSpan(
+      style: style,
+      children: [
+        if (index > 0) TextSpan(text: text.substring(0, index)),
+        TextSpan(
+          text: text.substring(index, index + query.length),
+          style: style.copyWith(
+            backgroundColor: AppColors.searchHighlight,
+            color: AppColors.searchHighlightText,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (index + query.length < text.length)
+          TextSpan(text: text.substring(index + query.length)),
+      ],
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Copy helper
+// ---------------------------------------------------------------------------
+
+/// Serializes [value] to a string suitable for the clipboard.
+String _serializeForClipboard(dynamic value) {
+  if (value == null) return 'null';
+  if (value is String) return value;
+  try {
+    return const JsonEncoder.withIndent('  ').convert(value);
+  } catch (_) {
+    return value.toString();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public widget
+// ---------------------------------------------------------------------------
+
 /// A lazy JSON tree widget that only builds children when a node is expanded.
 ///
-/// This reduces initial rendering cost for large JSON documents. It supports
-/// specifying `defaultExpandedDepth` so nodes are expanded up to that depth
-/// automatically on first build.
+/// Supports:
+///   - Search highlighting with auto-expand
+///   - Per-node copy button
+///   - JSON Path reporting via [onPathSelected]
+///   - Programmatic expand-all / collapse-all via [forceExpandAll]
+///   - Node type icon badges ({}, [], ", #, ✓/✗, ∅)
+///   - Array index keys styled distinctly from object keys
+///   - Alphabetical key sorting via [sortKeys]
+///   - Keyboard navigation (→ expand, ← collapse, Enter/Space toggle or copy)
 class LazyJsonTree extends StatelessWidget {
   final dynamic data;
   final int defaultExpandedDepth;
+  final String searchQuery;
+
+  /// Increment to trigger all nodes to re-evaluate their expansion state.
+  final int expansionGeneration;
+
+  /// `true` = expand all, `false` = collapse all, `null` = use depth setting.
+  final bool? forceExpandAll;
+
+  /// When true, object keys are sorted alphabetically before rendering.
+  final bool sortKeys;
+
+  /// Called when the user taps a node. Receives the full JSON-Path string.
+  final void Function(String path)? onPathSelected;
 
   const LazyJsonTree({
     super.key,
     required this.data,
-    this.defaultExpandedDepth = 0, // Default to collapsed for large datasets
+    this.defaultExpandedDepth = 0,
+    this.searchQuery = '',
+    this.expansionGeneration = 0,
+    this.forceExpandAll,
+    this.sortKeys = false,
+    this.onPathSelected,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Handle root as array or object
     if (data is List) {
       final list = data as List;
-      // Use ListView.builder at root level for virtualization
       return ListView.builder(
         padding: const EdgeInsets.all(AppDimensions.paddingM),
         itemCount: list.length,
-        // Use itemExtent for better scroll performance estimation
-        itemBuilder: (context, index) {
-          return _LazyNode(
-            keyName: '[$index]',
-            value: list[index],
-            depth: 0,
-            defaultExpandedDepth: defaultExpandedDepth,
-          );
-        },
+        itemBuilder: (context, index) => _LazyNode(
+          keyName: '[$index]',
+          value: list[index],
+          depth: 0,
+          path: '\$[$index]',
+          isArrayIndex: true,
+          defaultExpandedDepth: defaultExpandedDepth,
+          searchQuery: searchQuery,
+          expansionGeneration: expansionGeneration,
+          forceExpandAll: forceExpandAll,
+          sortKeys: sortKeys,
+          onPathSelected: onPathSelected,
+        ),
       );
     }
 
-    // Handle Map root
     final Map<String, dynamic> root = data is Map<String, dynamic>
         ? data as Map<String, dynamic>
         : <String, dynamic>{'root': data};
+    var entries = root.entries.toList();
+    if (sortKeys) entries.sort((a, b) => a.key.compareTo(b.key));
 
-    final entries = root.entries.toList();
-
-    // Use ListView.builder at root level for virtualization
     return ListView.builder(
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       itemCount: entries.length,
@@ -57,24 +157,52 @@ class LazyJsonTree extends StatelessWidget {
           keyName: e.key,
           value: e.value,
           depth: 0,
+          path: '\$.${e.key}',
+          isArrayIndex: false,
           defaultExpandedDepth: defaultExpandedDepth,
+          searchQuery: searchQuery,
+          expansionGeneration: expansionGeneration,
+          forceExpandAll: forceExpandAll,
+          sortKeys: sortKeys,
+          onPathSelected: onPathSelected,
         );
       },
     );
   }
 }
 
+// ---------------------------------------------------------------------------
+// Internal node widget
+// ---------------------------------------------------------------------------
+
 class _LazyNode extends StatefulWidget {
   final String keyName;
   final dynamic value;
   final int depth;
+  final String path;
+
+  /// True when this node represents an array index (e.g. [0], [1]).
+  final bool isArrayIndex;
+
   final int defaultExpandedDepth;
+  final String searchQuery;
+  final int expansionGeneration;
+  final bool? forceExpandAll;
+  final bool sortKeys;
+  final void Function(String path)? onPathSelected;
 
   const _LazyNode({
     required this.keyName,
     required this.value,
     required this.depth,
+    required this.path,
+    required this.isArrayIndex,
     required this.defaultExpandedDepth,
+    required this.searchQuery,
+    required this.expansionGeneration,
+    this.forceExpandAll,
+    required this.sortKeys,
+    this.onPathSelected,
   });
 
   @override
@@ -87,58 +215,111 @@ class _LazyNodeState extends State<_LazyNode> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.depth < widget.defaultExpandedDepth;
+    _expanded = _computeExpanded();
   }
 
   @override
   void didUpdateWidget(covariant _LazyNode oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Reset expansion state when data changes
-    if (oldWidget.value != widget.value) {
-      _expanded = widget.depth < widget.defaultExpandedDepth;
+    final signalChanged =
+        oldWidget.expansionGeneration != widget.expansionGeneration;
+    final queryChanged = oldWidget.searchQuery != widget.searchQuery;
+    if (signalChanged || queryChanged) {
+      setState(() => _expanded = _computeExpanded());
     }
   }
 
-  Widget _buildValuePreview() {
-    final v = widget.value;
-    // Use single-line ellipsized text to avoid horizontal overflow in tight layouts
-    if (v is Map) {
-      final len = v.length;
-      return Text(
-        '{$len ${len == 1 ? 'key' : 'keys'}}',
-        style: _valueStyle(),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-      );
-    } else if (v is List) {
-      final len = v.length;
-      return Text(
-        '[$len ${len == 1 ? 'item' : 'items'}]',
-        style: _valueStyle(),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-      );
-    } else {
-      return Text(
-        _formatScalar(v),
-        style: _valueStyle(),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-      );
+  bool _computeExpanded() {
+    // When a search is active, auto-expand nodes whose subtree contains a match.
+    if (widget.searchQuery.isNotEmpty) {
+      return _matchesSearch(widget.keyName, widget.value, widget.searchQuery);
     }
+    // Honour programmatic expand/collapse signal.
+    if (widget.forceExpandAll != null) return widget.forceExpandAll!;
+    // Fall back to depth-based default.
+    return widget.depth < widget.defaultExpandedDepth;
   }
+
+  // -------------------------------------------------------------------------
+  // Styles
+  // -------------------------------------------------------------------------
 
   TextStyle _keyStyle() => GoogleFonts.jetBrainsMono(
-    color: AppColors.jsonKey,
-    fontSize: AppDimensions.fontSizeM,
-  );
+        // Array indices use number color to visually distinguish from object keys.
+        color: widget.isArrayIndex ? AppColors.jsonNumber : AppColors.jsonKey,
+        fontSize: AppDimensions.fontSizeM,
+      );
 
-  TextStyle _valueStyle() => GoogleFonts.jetBrainsMono(
-    color: AppColors.jsonString,
-    fontSize: AppDimensions.fontSizeM,
-  );
+  TextStyle _valueStyle(dynamic v) {
+    if (v == null) {
+      return GoogleFonts.jetBrainsMono(
+          color: AppColors.jsonNull, fontSize: AppDimensions.fontSizeM);
+    }
+    if (v is bool) {
+      return GoogleFonts.jetBrainsMono(
+          color: AppColors.jsonBoolean, fontSize: AppDimensions.fontSizeM);
+    }
+    if (v is num) {
+      return GoogleFonts.jetBrainsMono(
+          color: AppColors.jsonNumber, fontSize: AppDimensions.fontSizeM);
+    }
+    return GoogleFonts.jetBrainsMono(
+        color: AppColors.jsonString, fontSize: AppDimensions.fontSizeM);
+  }
 
-  String _formatScalar(dynamic v) {
+  TextStyle _previewStyle() => GoogleFonts.jetBrainsMono(
+        color: AppColors.textSecondary,
+        fontSize: AppDimensions.fontSizeM,
+      );
+
+  // -------------------------------------------------------------------------
+  // Type icon badge
+  // -------------------------------------------------------------------------
+
+  /// Returns a compact monospace badge indicating the value type.
+  Widget _buildTypeIcon(dynamic v) {
+    final String label;
+    final Color color;
+
+    if (v is Map) {
+      label = '{}';
+      color = AppColors.jsonBracket;
+    } else if (v is List) {
+      label = '[]';
+      color = AppColors.jsonBracket;
+    } else if (v is String) {
+      label = '"';
+      color = AppColors.jsonString;
+    } else if (v is int || v is double) {
+      label = '#';
+      color = AppColors.jsonNumber;
+    } else if (v is bool) {
+      label = v ? 'T' : 'F';
+      color = AppColors.jsonBoolean;
+    } else {
+      // null
+      label = '∅';
+      color = AppColors.jsonNull;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 5),
+      child: Text(
+        label,
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 10,
+          color: color.withValues(alpha: 0.75),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Value rendering
+  // -------------------------------------------------------------------------
+
+  String _scalarText(dynamic v) {
     if (v == null) return 'null';
     if (v is String) {
       return '"${v.length > 80 ? '${v.substring(0, 80)}...' : v}"';
@@ -146,139 +327,289 @@ class _LazyNodeState extends State<_LazyNode> {
     return v.toString();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isContainer = widget.value is Map || widget.value is List;
-
-    if (!isContainer) {
-      return Padding(
-        padding: EdgeInsets.only(left: widget.depth * 12.0, top: 4, bottom: 4),
-        child: Row(
-          children: [
-            Text('${widget.keyName}: ', style: _keyStyle()),
-            const SizedBox(width: AppDimensions.paddingS),
-            // Allow the preview to take remaining space and ellipsize when needed
-            Expanded(child: _buildValuePreview()),
-          ],
-        ),
+  Widget _buildValuePreview() {
+    final v = widget.value;
+    if (v is Map) {
+      final len = v.length;
+      return Text(
+        '{$len ${len == 1 ? 'key' : 'keys'}}',
+        style: _previewStyle(),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
       );
     }
+    if (v is List) {
+      final len = v.length;
+      return Text(
+        '[$len ${len == 1 ? 'item' : 'items'}]',
+        style: _previewStyle(),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+      );
+    }
+    return _buildHighlightedText(_scalarText(v), widget.searchQuery, _valueStyle(v));
+  }
 
-    return Padding(
-      padding: EdgeInsets.only(left: widget.depth * 12.0, top: 4, bottom: 4),
-      child: ExpansionTile(
-        initiallyExpanded: _expanded,
-        onExpansionChanged: (v) {
-          setState(() => _expanded = v);
-        },
-        title: Row(
-          children: [
-            // Key can be long; allow it to shrink and ellipsize
-            Flexible(
-              child: Text(
-                '${widget.keyName}: ',
-                style: _keyStyle(),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ),
-            const SizedBox(width: AppDimensions.paddingS),
-            Expanded(child: _buildValuePreview()),
-          ],
+  // -------------------------------------------------------------------------
+  // Copy button
+  // -------------------------------------------------------------------------
+
+  Widget _buildCopyButton() {
+    return Tooltip(
+      message: 'Copy value',
+      child: InkWell(
+        onTap: _copyValue,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Icon(Icons.copy, size: 12, color: AppColors.textMuted),
         ),
-        children: _expanded ? [_buildChildrenWidget()] : const [],
       ),
     );
   }
 
-  /// Builds children either eagerly (when small) or with a lazy builder
-  /// when the number of children exceeds the virtualization threshold.
+  Future<void> _copyValue() async {
+    await Clipboard.setData(
+      ClipboardData(text: _serializeForClipboard(widget.value)),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Copied: ${widget.path}',
+          style: GoogleFonts.jetBrainsMono(fontSize: AppDimensions.fontSizeS),
+        ),
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Keyboard navigation
+  // -------------------------------------------------------------------------
+
+  /// Handles keyboard events for this node.
+  ///
+  /// Desktop shortcuts:
+  ///   → (ArrowRight) : expand a collapsed container
+  ///   ← (ArrowLeft)  : collapse an expanded container
+  ///   Enter / Space  : toggle container, or copy leaf value
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    final isContainer = widget.value is Map || widget.value is List;
+
+    if (key == LogicalKeyboardKey.arrowRight && isContainer && !_expanded) {
+      setState(() => _expanded = true);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft && isContainer && _expanded) {
+      setState(() => _expanded = false);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.space) {
+      if (isContainer) {
+        setState(() => _expanded = !_expanded);
+      } else {
+        _copyValue();
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  // -------------------------------------------------------------------------
+  // Path helper
+  // -------------------------------------------------------------------------
+
+  /// Returns the JSON-Path of a child node.
+  /// [isIndex] must be true when [childKey] is an array index like `[0]`.
+  String _childPath(String childKey, {required bool isIndex}) {
+    return isIndex ? '${widget.path}$childKey' : '${widget.path}.$childKey';
+  }
+
+  // -------------------------------------------------------------------------
+  // Children
+  // -------------------------------------------------------------------------
+
+  List<MapEntry<String, dynamic>> _sortedEntries(Map<String, dynamic> map) {
+    final entries = map.entries.toList();
+    if (widget.sortKeys) entries.sort((a, b) => a.key.compareTo(b.key));
+    return entries;
+  }
+
+  _LazyNode _childNode({
+    required String keyName,
+    required dynamic value,
+    required String path,
+    required bool isArrayIndex,
+  }) {
+    return _LazyNode(
+      keyName: keyName,
+      value: value,
+      depth: widget.depth + 1,
+      path: path,
+      isArrayIndex: isArrayIndex,
+      defaultExpandedDepth: widget.defaultExpandedDepth,
+      searchQuery: widget.searchQuery,
+      expansionGeneration: widget.expansionGeneration,
+      forceExpandAll: widget.forceExpandAll,
+      sortKeys: widget.sortKeys,
+      onPathSelected: widget.onPathSelected,
+    );
+  }
+
   Widget _buildChildrenWidget() {
     final v = widget.value;
+    const virtualizationThreshold = 32;
 
-    // Helper to detect number of children
-    int childCount() {
-      if (v is Map<String, dynamic>) return v.length;
-      if (v is List) return v.length;
-      return 0;
-    }
-
-    final count = childCount();
-    const virtualizationThreshold =
-        32; // Reduced threshold for better performance
-
-    // If no container children, return empty
-    if (count == 0) return const SizedBox.shrink();
-
-    // If below threshold, build eagerly (keeps layout simple)
-    if (count <= virtualizationThreshold) {
-      if (v is Map<String, dynamic>) {
-        final entries = (v).entries.toList();
+    if (v is Map<String, dynamic>) {
+      final entries = _sortedEntries(v);
+      if (entries.isEmpty) return const SizedBox.shrink();
+      if (entries.length <= virtualizationThreshold) {
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: entries
-              .map(
-                (e) => _LazyNode(
-                  keyName: e.key,
-                  value: e.value,
-                  depth: widget.depth + 1,
-                  defaultExpandedDepth: widget.defaultExpandedDepth,
-                ),
-              )
+              .map((e) => _childNode(
+                    keyName: e.key,
+                    value: e.value,
+                    path: _childPath(e.key, isIndex: false),
+                    isArrayIndex: false,
+                  ))
               .toList(),
         );
       }
-
-      if (v is List) {
-        final list = v;
-        return Column(
-          children: List.generate(
-            list.length,
-            (i) => _LazyNode(
-              keyName: '[$i]',
-              value: list[i],
-              depth: widget.depth + 1,
-              defaultExpandedDepth: widget.defaultExpandedDepth,
-            ),
-          ),
-        );
-      }
-    }
-
-    // For large child lists, use a builder to virtualize child creation.
-    if (v is Map<String, dynamic>) {
-      final entries = v.entries.toList();
       return ListView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: entries.length,
         itemBuilder: (context, index) {
           final e = entries[index];
-          return _LazyNode(
+          return _childNode(
             keyName: e.key,
             value: e.value,
-            depth: widget.depth + 1,
-            defaultExpandedDepth: widget.defaultExpandedDepth,
+            path: _childPath(e.key, isIndex: false),
+            isArrayIndex: false,
           );
         },
       );
     }
 
     if (v is List) {
+      if (v.isEmpty) return const SizedBox.shrink();
+      if (v.length <= virtualizationThreshold) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: List.generate(
+            v.length,
+            (i) => _childNode(
+              keyName: '[$i]',
+              value: v[i],
+              path: _childPath('[$i]', isIndex: true),
+              isArrayIndex: true,
+            ),
+          ),
+        );
+      }
       return ListView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: v.length,
-        itemBuilder: (context, index) {
-          return _LazyNode(
-            keyName: '[$index]',
-            value: v[index],
-            depth: widget.depth + 1,
-            defaultExpandedDepth: widget.defaultExpandedDepth,
-          );
-        },
+        itemBuilder: (context, index) => _childNode(
+          keyName: '[$index]',
+          value: v[index],
+          path: _childPath('[$index]', isIndex: true),
+          isArrayIndex: true,
+        ),
       );
     }
 
     return const SizedBox.shrink();
+  }
+
+  // -------------------------------------------------------------------------
+  // Build
+  // -------------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    final isContainer = widget.value is Map || widget.value is List;
+    final indent = widget.depth * 12.0;
+
+    // ----- Leaf node -----
+    if (!isContainer) {
+      return Focus(
+        onKeyEvent: _handleKeyEvent,
+        child: GestureDetector(
+          onTap: () => widget.onPathSelected?.call(widget.path),
+          child: Padding(
+            padding: EdgeInsets.only(left: indent, top: 3, bottom: 3),
+            child: Row(
+              children: [
+                _buildTypeIcon(widget.value),
+                Flexible(
+                  child: _buildHighlightedText(
+                    '${widget.keyName}: ',
+                    widget.searchQuery,
+                    _keyStyle(),
+                  ),
+                ),
+                const SizedBox(width: AppDimensions.paddingS),
+                Expanded(child: _buildValuePreview()),
+                _buildCopyButton(),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ----- Container node (Map or List) -----
+    return Focus(
+      onKeyEvent: _handleKeyEvent,
+      child: Padding(
+        padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row — tap toggles expansion and reports path.
+            InkWell(
+              onTap: () {
+                setState(() => _expanded = !_expanded);
+                widget.onPathSelected?.call(widget.path);
+              },
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Icon(
+                      _expanded ? Icons.expand_more : Icons.chevron_right,
+                      size: AppDimensions.iconSizeS,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 2),
+                    _buildTypeIcon(widget.value),
+                    Flexible(
+                      child: _buildHighlightedText(
+                        '${widget.keyName}: ',
+                        widget.searchQuery,
+                        _keyStyle(),
+                      ),
+                    ),
+                    const SizedBox(width: AppDimensions.paddingS),
+                    Expanded(child: _buildValuePreview()),
+                    _buildCopyButton(),
+                  ],
+                ),
+              ),
+            ),
+            // Children — built lazily, only when expanded.
+            if (_expanded) _buildChildrenWidget(),
+          ],
+        ),
+      ),
+    );
   }
 }

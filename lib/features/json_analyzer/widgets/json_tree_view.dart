@@ -11,12 +11,76 @@ import 'depth_dialog.dart';
 import 'lazy_json_tree.dart';
 import 'processing_overlay.dart';
 
-/// Tree view widget for displaying JSON in an expandable/collapsible tree structure.
-class JsonTreeViewWidget extends ConsumerWidget {
+/// Tree view widget for displaying JSON in an expandable/collapsible tree.
+///
+/// Phase 1:
+///   - Search / filter with match highlighting and auto-expand
+///   - Per-node copy button (in LazyJsonTree)
+///   - JSON Path display in the bottom status strip
+///   - Expand All / Collapse All toolbar buttons
+///
+/// Phase 2:
+///   - Sort Keys toggle button (persisted via Settings)
+///   - Node type icons, array index coloring, keyboard nav (in LazyJsonTree)
+class JsonTreeViewWidget extends ConsumerStatefulWidget {
   const JsonTreeViewWidget({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<JsonTreeViewWidget> createState() => _JsonTreeViewWidgetState();
+}
+
+class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
+  final TextEditingController _searchController = TextEditingController();
+
+  String _searchQuery = '';
+  String _selectedPath = '';
+  int _expansionGeneration = 0;
+
+  /// `true` = expand all, `false` = collapse all, `null` = use depth setting.
+  bool? _forceExpandAll;
+
+  bool _isSearchVisible = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // -------------------------------------------------------------------------
+  // Toolbar actions
+  // -------------------------------------------------------------------------
+
+  void _expandAll() => setState(() {
+    _forceExpandAll = true;
+    _expansionGeneration++;
+  });
+
+  void _collapseAll() => setState(() {
+    _forceExpandAll = false;
+    _expansionGeneration++;
+  });
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearchVisible = !_isSearchVisible;
+      if (!_isSearchVisible) _clearSearch();
+    });
+  }
+
+  void _clearSearch() {
+    setState(() {
+      _searchQuery = '';
+      _searchController.clear();
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Build
+  // -------------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
     final parsedData = ref.watch(parsedDataProvider);
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
@@ -31,7 +95,8 @@ class JsonTreeViewWidget extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildHeader(context, ref),
+          _buildHeader(context),
+          if (_isSearchVisible) _buildSearchBar(),
           const Divider(height: 1),
           Expanded(
             child: Stack(
@@ -40,19 +105,23 @@ class JsonTreeViewWidget extends ConsumerWidget {
                   parsedData: parsedData,
                   isValid: isValid,
                   isEmpty: isEmpty,
-                  ref: ref,
                 ),
                 if (isProcessing)
                   const ProcessingOverlay(message: 'Processing large JSON...'),
               ],
             ),
           ),
+          if (_selectedPath.isNotEmpty) _buildPathStrip(),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, WidgetRef ref) {
+  // -------------------------------------------------------------------------
+  // Header
+  // -------------------------------------------------------------------------
+
+  Widget _buildHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingM,
@@ -81,23 +150,211 @@ class JsonTreeViewWidget extends ConsumerWidget {
             ),
           ),
           const Spacer(),
-          _buildSettingsButton(context, ref),
+          _buildExpandCollapseButtons(),
+          _buildSearchToggleButton(),
+          _buildSortKeysButton(),
+          _buildSettingsButton(context),
         ],
       ),
     );
   }
 
+  Widget _buildExpandCollapseButtons() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Expand all',
+          icon: const Icon(
+            Icons.unfold_more,
+            size: AppDimensions.iconSizeS,
+            color: AppColors.textSecondary,
+          ),
+          onPressed: _expandAll,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        ),
+        IconButton(
+          tooltip: 'Collapse all',
+          icon: const Icon(
+            Icons.unfold_less,
+            size: AppDimensions.iconSizeS,
+            color: AppColors.textSecondary,
+          ),
+          onPressed: _collapseAll,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchToggleButton() {
+    return IconButton(
+      tooltip: _isSearchVisible ? 'Close search' : 'Search in tree',
+      icon: Icon(
+        Icons.search,
+        size: AppDimensions.iconSizeS,
+        color: _isSearchVisible ? AppColors.primary : AppColors.textSecondary,
+      ),
+      onPressed: _toggleSearch,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+    );
+  }
+
+  /// Toggle button for alphabetical key sorting (Phase 2).
+  Widget _buildSortKeysButton() {
+    final sortKeys = ref.watch(settingsProvider).sortKeys;
+    return IconButton(
+      tooltip: sortKeys ? 'Sort keys: ON (click to disable)' : 'Sort keys A-Z',
+      icon: Icon(
+        Icons.sort_by_alpha,
+        size: AppDimensions.iconSizeS,
+        color: sortKeys ? AppColors.primary : AppColors.textSecondary,
+      ),
+      onPressed: () async {
+        await ref.read(settingsProvider.notifier).setSortKeys(!sortKeys);
+        setState(() => _expansionGeneration++);
+      },
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+    );
+  }
+
+  Widget _buildSettingsButton(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    return IconButton(
+      tooltip: 'Tree settings',
+      icon: const Icon(
+        Icons.settings,
+        size: AppDimensions.iconSizeS,
+        color: AppColors.textSecondary,
+      ),
+      onPressed: () async {
+        final selected = await showDialog<int>(
+          context: context,
+          builder: (context) =>
+              DepthDialog(initial: settings.defaultExpandedDepth),
+        );
+        if (selected != null) {
+          await ref
+              .read(settingsProvider.notifier)
+              .setDefaultExpandedDepth(selected);
+          setState(() {
+            _forceExpandAll = null;
+            _expansionGeneration++;
+          });
+        }
+      },
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Search bar
+  // -------------------------------------------------------------------------
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingM,
+        vertical: AppDimensions.paddingS,
+      ),
+      color: AppColors.surface,
+      child: Row(
+        children: [
+          const Icon(
+            Icons.search,
+            size: AppDimensions.iconSizeS,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: AppDimensions.paddingS),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              autofocus: true,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: AppDimensions.fontSizeS,
+                color: AppColors.textPrimary,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search keys or values...',
+                hintStyle: GoogleFonts.jetBrainsMono(
+                  fontSize: AppDimensions.fontSizeS,
+                  color: AppColors.textMuted,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: (value) => setState(() => _searchQuery = value),
+            ),
+          ),
+          if (_searchQuery.isNotEmpty)
+            GestureDetector(
+              onTap: _clearSearch,
+              child: const Icon(
+                Icons.close,
+                size: AppDimensions.iconSizeS,
+                color: AppColors.textSecondary,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // JSON Path strip
+  // -------------------------------------------------------------------------
+
+  Widget _buildPathStrip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingM,
+        vertical: 6,
+      ),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(AppDimensions.radiusM),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.route, size: 12, color: AppColors.textMuted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              _selectedPath,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Content
+  // -------------------------------------------------------------------------
+
   Widget _buildContent({
     required dynamic parsedData,
     required bool isValid,
     required bool isEmpty,
-    required WidgetRef ref,
   }) {
     if (isEmpty || !isValid || parsedData == null) {
       return _buildPlaceholder();
     }
-
-    return _buildTreeView(parsedData, ref);
+    return _buildTreeView(parsedData);
   }
 
   Widget _buildPlaceholder() {
@@ -112,29 +369,16 @@ class JsonTreeViewWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildSettingsButton(BuildContext context, WidgetRef ref) {
+  Widget _buildTreeView(dynamic data) {
     final settings = ref.watch(settingsProvider);
-    return IconButton(
-      tooltip: 'Tree settings',
-      icon: const Icon(Icons.settings, color: AppColors.textSecondary),
-      onPressed: () async {
-        final selected = await showDialog<int>(
-          context: context,
-          builder: (context) {
-            return DepthDialog(initial: settings.defaultExpandedDepth);
-          },
-        );
-        if (selected != null) {
-          await ref
-              .read(settingsProvider.notifier)
-              .setDefaultExpandedDepth(selected);
-        }
-      },
+    return LazyJsonTree(
+      data: data,
+      defaultExpandedDepth: settings.defaultExpandedDepth,
+      searchQuery: _searchQuery,
+      expansionGeneration: _expansionGeneration,
+      forceExpandAll: _forceExpandAll,
+      sortKeys: settings.sortKeys,
+      onPathSelected: (path) => setState(() => _selectedPath = path),
     );
-  }
-
-  Widget _buildTreeView(dynamic data, WidgetRef ref) {
-    final defaultDepth = ref.watch(settingsProvider).defaultExpandedDepth;
-    return LazyJsonTree(data: data, defaultExpandedDepth: defaultDepth);
   }
 }

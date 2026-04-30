@@ -8,6 +8,9 @@ class Settings {
   /// Default depth for tree view expansion.
   final int defaultExpandedDepth;
 
+  /// Whether to sort object keys alphabetically in the tree view.
+  final bool sortKeys;
+
   /// Threshold (bytes) for showing processing indicator.
   final int processingIndicatorThreshold;
 
@@ -25,6 +28,7 @@ class Settings {
 
   const Settings({
     this.defaultExpandedDepth = 0,
+    this.sortKeys = false,
     this.processingIndicatorThreshold =
         PerformanceConstants.processingIndicatorThreshold,
     this.syntaxHighlightingThreshold =
@@ -36,6 +40,7 @@ class Settings {
 
   Settings copyWith({
     int? defaultExpandedDepth,
+    bool? sortKeys,
     int? processingIndicatorThreshold,
     int? syntaxHighlightingThreshold,
     int? readOnlyInputThreshold,
@@ -44,6 +49,7 @@ class Settings {
   }) {
     return Settings(
       defaultExpandedDepth: defaultExpandedDepth ?? this.defaultExpandedDepth,
+      sortKeys: sortKeys ?? this.sortKeys,
       processingIndicatorThreshold:
           processingIndicatorThreshold ?? this.processingIndicatorThreshold,
       syntaxHighlightingThreshold:
@@ -76,6 +82,7 @@ class Settings {
 
 class SettingsNotifier extends StateNotifier<Settings> {
   static const _keyDefaultDepth = 'default_expanded_depth';
+  static const _keySortKeys = 'sort_keys';
 
   SettingsNotifier() : super(const Settings()) {
     _load();
@@ -84,13 +91,20 @@ class SettingsNotifier extends StateNotifier<Settings> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final depth = prefs.getInt(_keyDefaultDepth) ?? state.defaultExpandedDepth;
-    state = state.copyWith(defaultExpandedDepth: depth);
+    final sortKeys = prefs.getBool(_keySortKeys) ?? state.sortKeys;
+    state = state.copyWith(defaultExpandedDepth: depth, sortKeys: sortKeys);
   }
 
   Future<void> setDefaultExpandedDepth(int depth) async {
     state = state.copyWith(defaultExpandedDepth: depth);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyDefaultDepth, depth);
+  }
+
+  Future<void> setSortKeys(bool value) async {
+    state = state.copyWith(sortKeys: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySortKeys, value);
   }
 }
 

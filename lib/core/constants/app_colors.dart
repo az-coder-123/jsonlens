@@ -39,4 +39,8 @@ abstract final class AppColors {
   // Button colors
   static const Color buttonPrimary = Color(0xFF0E639C);
   static const Color buttonHover = Color(0xFF1177BB);
+
+  // Search highlight
+  static const Color searchHighlight = Color(0xFFFFD700);
+  static const Color searchHighlightText = Color(0xFF1E1E1E);
 }
