@@ -8,7 +8,6 @@ import '../../version_check/about_dialog.dart';
 import '../../version_check/version_banner.dart';
 import '../../version_check/version_notifier.dart';
 import '../providers/json_analyzer_provider.dart';
-import '../widgets/advanced_toolbar.dart';
 import '../widgets/json_compare_panel.dart';
 import '../widgets/json_input_area.dart';
 import '../widgets/json_path_query_panel.dart';
@@ -129,7 +128,6 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
     return Column(
       children: [
         Toolbar(onShowMessage: _showMessage),
-        AdvancedToolbar(onShowMessage: _showMessage),
         if (_showTools) _buildToolsPanel(),
         Expanded(
           child: LayoutBuilder(

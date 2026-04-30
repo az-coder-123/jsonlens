@@ -235,6 +235,8 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
             ),
           ),
           const Spacer(),
+          // Transform & Clean shortcuts
+          if (!isReadOnlyMode) _buildTransformCleanButtons(),
           // Format & Minify shortcuts
           if (!isReadOnlyMode) _buildFormatMinifyButtons(),
           // Undo / Redo buttons
@@ -465,6 +467,110 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   }
 
   /// Undo / Redo icon buttons driven by [UndoHistoryController].
+  Widget _buildTransformCleanButtons() {
+    final isValid = ref.watch(isValidProvider);
+    final isEmpty = ref.watch(isEmptyProvider);
+    final enabled = isValid && !isEmpty;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PopupMenuButton<VoidCallback>(
+          enabled: enabled,
+          tooltip: 'Transform',
+          offset: const Offset(0, 28),
+          color: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          onSelected: (fn) => fn(),
+          itemBuilder: (_) => [
+            _transformItem(
+              icon: Icons.sort_by_alpha,
+              label: 'Sort Keys (A→Z)',
+              onTap: () => ref
+                  .read(jsonAnalyzerProvider.notifier)
+                  .sortKeys(ascending: true),
+            ),
+            _transformItem(
+              icon: Icons.sort_by_alpha,
+              label: 'Sort Keys (Z→A)',
+              onTap: () => ref
+                  .read(jsonAnalyzerProvider.notifier)
+                  .sortKeys(ascending: false),
+            ),
+            _transformItem(
+              icon: Icons.compress,
+              label: 'Flatten',
+              onTap: () => ref.read(jsonAnalyzerProvider.notifier).flatten(),
+            ),
+          ],
+          icon: Icon(
+            Icons.transform,
+            size: AppDimensions.iconSizeS,
+            color: enabled ? AppColors.textSecondary : AppColors.textMuted,
+          ),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        ),
+        PopupMenuButton<VoidCallback>(
+          enabled: enabled,
+          tooltip: 'Clean',
+          offset: const Offset(0, 28),
+          color: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          onSelected: (fn) => fn(),
+          itemBuilder: (_) => [
+            _transformItem(
+              icon: Icons.delete_outline,
+              label: 'Remove Nulls',
+              onTap: () =>
+                  ref.read(jsonAnalyzerProvider.notifier).removeNulls(),
+            ),
+            _transformItem(
+              icon: Icons.delete_sweep,
+              label: 'Remove Empty',
+              onTap: () =>
+                  ref.read(jsonAnalyzerProvider.notifier).removeEmpty(),
+            ),
+          ],
+          icon: Icon(
+            Icons.cleaning_services,
+            size: AppDimensions.iconSizeS,
+            color: enabled ? AppColors.textSecondary : AppColors.textMuted,
+          ),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        ),
+        const SizedBox(width: 2),
+      ],
+    );
+  }
+
+  PopupMenuItem<VoidCallback> _transformItem({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return PopupMenuItem<VoidCallback>(
+      value: onTap,
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: AppDimensions.iconSizeS,
+            color: AppColors.textPrimary,
+          ),
+          const SizedBox(width: AppDimensions.paddingS),
+          Text(label, style: const TextStyle(color: AppColors.textPrimary)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFormatMinifyButtons() {
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
@@ -483,12 +589,14 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
               ? () async {
                   await ref.read(jsonAnalyzerProvider.notifier).format();
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(AppStrings.formatted),
-                      duration: const Duration(seconds: 2),
-                      behavior: SnackBarBehavior.floating,
-                      margin: const EdgeInsets.all(AppDimensions.paddingM),
-                    ));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(AppStrings.formatted),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                        margin: const EdgeInsets.all(AppDimensions.paddingM),
+                      ),
+                    );
                   }
                 }
               : null,
@@ -506,12 +614,14 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
               ? () async {
                   await ref.read(jsonAnalyzerProvider.notifier).minify();
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(AppStrings.minified),
-                      duration: const Duration(seconds: 2),
-                      behavior: SnackBarBehavior.floating,
-                      margin: const EdgeInsets.all(AppDimensions.paddingM),
-                    ));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(AppStrings.minified),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                        margin: const EdgeInsets.all(AppDimensions.paddingM),
+                      ),
+                    );
                   }
                 }
               : null,
