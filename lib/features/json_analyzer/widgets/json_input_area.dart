@@ -209,12 +209,13 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     );
   }
 
+  static const double _kCompactThreshold = 560.0;
+
   Widget _buildHeader({required bool isReadOnlyMode, required int inputSize}) {
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
-    final output = ref.watch(outputProvider);
     final canAct = isValid && !isEmpty;
-    final canCopySave = isValid && output.isNotEmpty;
+    final canCopySave = isValid && ref.watch(outputProvider).isNotEmpty;
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -227,239 +228,516 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
           top: Radius.circular(AppDimensions.radiusM),
         ),
       ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact =
+              !isReadOnlyMode && constraints.maxWidth < _kCompactThreshold;
+          return Row(
+            children: [
+              Icon(
+                isReadOnlyMode ? Icons.lock_outline : Icons.input,
+                size: AppDimensions.iconSizeS,
+                color: isReadOnlyMode
+                    ? AppColors.warning
+                    : AppColors.textSecondary,
+              ),
+              const SizedBox(width: AppDimensions.paddingS),
+              Text(
+                'Input',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: AppDimensions.fontSizeS,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              if (compact)
+                _buildActionsCompact(
+                  canAct: canAct,
+                  canCopySave: canCopySave,
+                  isEmpty: isEmpty,
+                )
+              else if (!isReadOnlyMode)
+                _buildActionsWide(
+                  canAct: canAct,
+                  canCopySave: canCopySave,
+                  isEmpty: isEmpty,
+                ),
+              if (isReadOnlyMode) _buildReadOnlyBadge(),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Full grouped icon-button row shown when width >= [_kCompactThreshold].
+  Widget _buildActionsWide({
+    required bool canAct,
+    required bool canCopySave,
+    required bool isEmpty,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Group 1: File ────────────────────────────────────────────────
+        _iconBtn(
+          tooltip: 'HTTP Request',
+          icon: Icons.cloud_download_outlined,
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => const HttpRequestDialog(),
+          ),
+        ),
+        _iconBtn(
+          tooltip: AppStrings.open,
+          icon: Icons.folder_open,
+          onPressed: () async {
+            final outcome = await FileHelper.openTextFile();
+            switch (outcome.status) {
+              case OpenStatus.opened:
+                if (outcome.contents != null) {
+                  await ref
+                      .read(jsonAnalyzerProvider.notifier)
+                      .updateInput(outcome.contents!);
+                  _snack(
+                    outcome.path != null
+                        ? '${AppStrings.loadedFromFile}: ${outcome.path}'
+                        : AppStrings.loadedFromFile,
+                  );
+                }
+              case OpenStatus.cancelled:
+                _snack(AppStrings.loadCancelled);
+              case OpenStatus.failed:
+                _snack(AppStrings.loadFailed);
+            }
+          },
+        ),
+        _iconBtn(
+          tooltip: AppStrings.save,
+          icon: Icons.save,
+          enabled: canCopySave,
+          onPressed: !canCopySave
+              ? null
+              : () async {
+                  final outcome = await FileHelper.saveTextFile(
+                    suggestedName: 'data.json',
+                    contents: ref.read(outputProvider),
+                  );
+                  switch (outcome.status) {
+                    case SaveStatus.saved:
+                      _snack(
+                        outcome.path != null
+                            ? '${AppStrings.savedToFile}: ${outcome.path}'
+                            : AppStrings.savedToFile,
+                      );
+                    case SaveStatus.cancelled:
+                      _snack(AppStrings.saveCancelled);
+                    case SaveStatus.failed:
+                      _snack(AppStrings.saveFailed);
+                  }
+                },
+        ),
+        _divider(),
+        // ── Group 2: Clipboard ───────────────────────────────────────────
+        _iconBtn(
+          tooltip: AppStrings.copy,
+          icon: Icons.content_copy,
+          enabled: canCopySave,
+          onPressed: !canCopySave
+              ? null
+              : () async {
+                  final ok = await ClipboardHelper.copy(
+                    ref.read(outputProvider),
+                  );
+                  if (ok) _snack(AppStrings.copiedToClipboard);
+                },
+        ),
+        FutureBuilder<bool>(
+          future: ClipboardHelper.hasText(),
+          builder: (context, snapshot) {
+            final hasText = snapshot.data ?? false;
+            return _iconBtn(
+              tooltip: AppStrings.paste,
+              icon: Icons.content_paste,
+              enabled: hasText,
+              onPressed: !hasText
+                  ? null
+                  : () async {
+                      final text = await ClipboardHelper.paste();
+                      if (text != null && text.isNotEmpty) {
+                        ref
+                            .read(jsonAnalyzerProvider.notifier)
+                            .pasteFromClipboard(text);
+                        _snack(AppStrings.pastedFromClipboard);
+                      } else {
+                        _snack(AppStrings.clipboardEmpty);
+                      }
+                    },
+            );
+          },
+        ),
+        _iconBtn(
+          tooltip: AppStrings.clear,
+          icon: Icons.clear_all,
+          enabled: !isEmpty,
+          onPressed: isEmpty
+              ? null
+              : () {
+                  ref.read(jsonAnalyzerProvider.notifier).clear();
+                  _snack(AppStrings.cleared);
+                },
+        ),
+        _divider(),
+        // ── Group 3: Transform ───────────────────────────────────────────
+        _iconBtn(
+          tooltip: AppStrings.format,
+          icon: Icons.format_align_left,
+          enabled: canAct,
+          onPressed: !canAct
+              ? null
+              : () async {
+                  await ref.read(jsonAnalyzerProvider.notifier).format();
+                  _snack(AppStrings.formatted);
+                },
+        ),
+        _iconBtn(
+          tooltip: AppStrings.minify,
+          icon: Icons.compress,
+          enabled: canAct,
+          onPressed: !canAct
+              ? null
+              : () async {
+                  await ref.read(jsonAnalyzerProvider.notifier).minify();
+                  _snack(AppStrings.minified);
+                },
+        ),
+        _popupIconBtn(
+          tooltip: 'Transform',
+          icon: Icons.transform,
+          enabled: canAct,
+          items: [
+            _menuItem(
+              Icons.sort_by_alpha,
+              'Sort Keys (A→Z)',
+              () => ref
+                  .read(jsonAnalyzerProvider.notifier)
+                  .sortKeys(ascending: true),
+            ),
+            _menuItem(
+              Icons.sort_by_alpha,
+              'Sort Keys (Z→A)',
+              () => ref
+                  .read(jsonAnalyzerProvider.notifier)
+                  .sortKeys(ascending: false),
+            ),
+            _menuItem(
+              Icons.compress,
+              'Flatten',
+              () => ref.read(jsonAnalyzerProvider.notifier).flatten(),
+            ),
+          ],
+        ),
+        _popupIconBtn(
+          tooltip: 'Clean',
+          icon: Icons.cleaning_services,
+          enabled: canAct,
+          items: [
+            _menuItem(
+              Icons.delete_outline,
+              'Remove Nulls',
+              () => ref.read(jsonAnalyzerProvider.notifier).removeNulls(),
+            ),
+            _menuItem(
+              Icons.delete_sweep,
+              'Remove Empty',
+              () => ref.read(jsonAnalyzerProvider.notifier).removeEmpty(),
+            ),
+          ],
+        ),
+        _divider(),
+        // ── Group 4: Edit ────────────────────────────────────────────────
+        _iconBtn(
+          tooltip: 'Find & Replace',
+          icon: Icons.find_replace,
+          active: _showFindReplace,
+          onPressed: () => setState(() => _showFindReplace = !_showFindReplace),
+        ),
+        ValueListenableBuilder<UndoHistoryValue>(
+          valueListenable: _undoController,
+          builder: (context, undoVal, _) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _iconBtn(
+                tooltip: 'Undo',
+                icon: Icons.undo,
+                enabled: undoVal.canUndo,
+                onPressed: undoVal.canUndo ? _undoController.undo : null,
+              ),
+              _iconBtn(
+                tooltip: 'Redo',
+                icon: Icons.redo,
+                enabled: undoVal.canRedo,
+                onPressed: undoVal.canRedo ? _undoController.redo : null,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Collapsed single `⋯` menu shown when width < [_kCompactThreshold].
+  Widget _buildActionsCompact({
+    required bool canAct,
+    required bool canCopySave,
+    required bool isEmpty,
+  }) {
+    final undoVal = _undoController.value;
+    return PopupMenuButton<VoidCallback>(
+      tooltip: 'Actions',
+      offset: const Offset(0, 32),
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      onSelected: (fn) => fn(),
+      icon: const Icon(
+        Icons.more_horiz,
+        size: AppDimensions.iconSizeS,
+        color: AppColors.textSecondary,
+      ),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      itemBuilder: (_) => [
+        // ── File ──────────────────────────────────────────────────────────
+        _menuSection('FILE'),
+        _menuAction(
+          Icons.cloud_download_outlined,
+          'HTTP Request',
+          true,
+          () => showDialog<void>(
+            context: context,
+            builder: (_) => const HttpRequestDialog(),
+          ),
+        ),
+        _menuAction(Icons.folder_open, AppStrings.open, true, () async {
+          final outcome = await FileHelper.openTextFile();
+          switch (outcome.status) {
+            case OpenStatus.opened:
+              if (outcome.contents != null) {
+                await ref
+                    .read(jsonAnalyzerProvider.notifier)
+                    .updateInput(outcome.contents!);
+                _snack(
+                  outcome.path != null
+                      ? '${AppStrings.loadedFromFile}: ${outcome.path}'
+                      : AppStrings.loadedFromFile,
+                );
+              }
+            case OpenStatus.cancelled:
+              _snack(AppStrings.loadCancelled);
+            case OpenStatus.failed:
+              _snack(AppStrings.loadFailed);
+          }
+        }),
+        _menuAction(
+          Icons.save,
+          AppStrings.save,
+          canCopySave,
+          !canCopySave
+              ? null
+              : () async {
+                  final outcome = await FileHelper.saveTextFile(
+                    suggestedName: 'data.json',
+                    contents: ref.read(outputProvider),
+                  );
+                  switch (outcome.status) {
+                    case SaveStatus.saved:
+                      _snack(
+                        outcome.path != null
+                            ? '${AppStrings.savedToFile}: ${outcome.path}'
+                            : AppStrings.savedToFile,
+                      );
+                    case SaveStatus.cancelled:
+                      _snack(AppStrings.saveCancelled);
+                    case SaveStatus.failed:
+                      _snack(AppStrings.saveFailed);
+                  }
+                },
+        ),
+        // ── Clipboard ─────────────────────────────────────────────────────
+        const PopupMenuDivider(),
+        _menuSection('CLIPBOARD'),
+        _menuAction(
+          Icons.content_copy,
+          AppStrings.copy,
+          canCopySave,
+          !canCopySave
+              ? null
+              : () async {
+                  final ok = await ClipboardHelper.copy(
+                    ref.read(outputProvider),
+                  );
+                  if (ok) _snack(AppStrings.copiedToClipboard);
+                },
+        ),
+        _menuAction(Icons.content_paste, AppStrings.paste, true, () async {
+          final text = await ClipboardHelper.paste();
+          if (text != null && text.isNotEmpty) {
+            ref.read(jsonAnalyzerProvider.notifier).pasteFromClipboard(text);
+            _snack(AppStrings.pastedFromClipboard);
+          } else {
+            _snack(AppStrings.clipboardEmpty);
+          }
+        }),
+        _menuAction(
+          Icons.clear_all,
+          AppStrings.clear,
+          !isEmpty,
+          isEmpty
+              ? null
+              : () {
+                  ref.read(jsonAnalyzerProvider.notifier).clear();
+                  _snack(AppStrings.cleared);
+                },
+        ),
+        // ── Transform ─────────────────────────────────────────────────────
+        const PopupMenuDivider(),
+        _menuSection('TRANSFORM'),
+        _menuAction(
+          Icons.format_align_left,
+          AppStrings.format,
+          canAct,
+          !canAct
+              ? null
+              : () async {
+                  await ref.read(jsonAnalyzerProvider.notifier).format();
+                  _snack(AppStrings.formatted);
+                },
+        ),
+        _menuAction(
+          Icons.compress,
+          AppStrings.minify,
+          canAct,
+          !canAct
+              ? null
+              : () async {
+                  await ref.read(jsonAnalyzerProvider.notifier).minify();
+                  _snack(AppStrings.minified);
+                },
+        ),
+        _menuAction(
+          Icons.sort_by_alpha,
+          'Sort Keys (A→Z)',
+          canAct,
+          !canAct
+              ? null
+              : () => ref
+                    .read(jsonAnalyzerProvider.notifier)
+                    .sortKeys(ascending: true),
+        ),
+        _menuAction(
+          Icons.sort_by_alpha,
+          'Sort Keys (Z→A)',
+          canAct,
+          !canAct
+              ? null
+              : () => ref
+                    .read(jsonAnalyzerProvider.notifier)
+                    .sortKeys(ascending: false),
+        ),
+        _menuAction(
+          Icons.compress,
+          'Flatten',
+          canAct,
+          !canAct
+              ? null
+              : () => ref.read(jsonAnalyzerProvider.notifier).flatten(),
+        ),
+        _menuAction(
+          Icons.delete_outline,
+          'Remove Nulls',
+          canAct,
+          !canAct
+              ? null
+              : () => ref.read(jsonAnalyzerProvider.notifier).removeNulls(),
+        ),
+        _menuAction(
+          Icons.delete_sweep,
+          'Remove Empty',
+          canAct,
+          !canAct
+              ? null
+              : () => ref.read(jsonAnalyzerProvider.notifier).removeEmpty(),
+        ),
+        // ── Edit ──────────────────────────────────────────────────────────
+        const PopupMenuDivider(),
+        _menuSection('EDIT'),
+        _menuAction(
+          Icons.find_replace,
+          'Find & Replace',
+          true,
+          () => setState(() => _showFindReplace = !_showFindReplace),
+        ),
+        _menuAction(
+          Icons.undo,
+          'Undo',
+          undoVal.canUndo,
+          !undoVal.canUndo ? null : _undoController.undo,
+        ),
+        _menuAction(
+          Icons.redo,
+          'Redo',
+          undoVal.canRedo,
+          !undoVal.canRedo ? null : _undoController.redo,
+        ),
+      ],
+    );
+  }
+
+  /// Section header item for the compact dropdown.
+  PopupMenuItem<VoidCallback> _menuSection(String label) {
+    return PopupMenuItem<VoidCallback>(
+      enabled: false,
+      height: 28,
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textMuted,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  /// Action item for the compact dropdown.
+  PopupMenuItem<VoidCallback> _menuAction(
+    IconData icon,
+    String label,
+    bool enabled,
+    VoidCallback? onTap,
+  ) {
+    return PopupMenuItem<VoidCallback>(
+      value: onTap,
+      enabled: enabled && onTap != null,
       child: Row(
         children: [
-          // Label
           Icon(
-            isReadOnlyMode ? Icons.lock_outline : Icons.input,
+            icon,
             size: AppDimensions.iconSizeS,
-            color: isReadOnlyMode ? AppColors.warning : AppColors.textSecondary,
+            color: enabled ? AppColors.textPrimary : AppColors.textMuted,
           ),
           const SizedBox(width: AppDimensions.paddingS),
           Text(
-            'Input',
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: AppDimensions.fontSizeS,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
+            label,
+            style: TextStyle(
+              color: enabled ? AppColors.textPrimary : AppColors.textMuted,
             ),
           ),
-
-          const Spacer(),
-
-          if (!isReadOnlyMode) ...[
-            // ── Group 1: File ──────────────────────────────────────────────
-            _iconBtn(
-              tooltip: 'HTTP Request',
-              icon: Icons.cloud_download_outlined,
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => const HttpRequestDialog(),
-              ),
-            ),
-            _iconBtn(
-              tooltip: AppStrings.open,
-              icon: Icons.folder_open,
-              onPressed: () async {
-                final outcome = await FileHelper.openTextFile();
-                switch (outcome.status) {
-                  case OpenStatus.opened:
-                    if (outcome.contents != null) {
-                      await ref
-                          .read(jsonAnalyzerProvider.notifier)
-                          .updateInput(outcome.contents!);
-                      _snack(
-                        outcome.path != null
-                            ? '${AppStrings.loadedFromFile}: ${outcome.path}'
-                            : AppStrings.loadedFromFile,
-                      );
-                    }
-                  case OpenStatus.cancelled:
-                    _snack(AppStrings.loadCancelled);
-                  case OpenStatus.failed:
-                    _snack(AppStrings.loadFailed);
-                }
-              },
-            ),
-            _iconBtn(
-              tooltip: AppStrings.save,
-              icon: Icons.save,
-              enabled: canCopySave,
-              onPressed: !canCopySave
-                  ? null
-                  : () async {
-                      final outcome = await FileHelper.saveTextFile(
-                        suggestedName: 'data.json',
-                        contents: output,
-                      );
-                      switch (outcome.status) {
-                        case SaveStatus.saved:
-                          _snack(
-                            outcome.path != null
-                                ? '${AppStrings.savedToFile}: ${outcome.path}'
-                                : AppStrings.savedToFile,
-                          );
-                        case SaveStatus.cancelled:
-                          _snack(AppStrings.saveCancelled);
-                        case SaveStatus.failed:
-                          _snack(AppStrings.saveFailed);
-                      }
-                    },
-            ),
-
-            _divider(),
-
-            // ── Group 2: Clipboard ─────────────────────────────────────────
-            _iconBtn(
-              tooltip: AppStrings.copy,
-              icon: Icons.content_copy,
-              enabled: canCopySave,
-              onPressed: !canCopySave
-                  ? null
-                  : () async {
-                      final ok = await ClipboardHelper.copy(output);
-                      if (ok) _snack(AppStrings.copiedToClipboard);
-                    },
-            ),
-            FutureBuilder<bool>(
-              future: ClipboardHelper.hasText(),
-              builder: (context, snapshot) {
-                final hasText = snapshot.data ?? false;
-                return _iconBtn(
-                  tooltip: AppStrings.paste,
-                  icon: Icons.content_paste,
-                  enabled: hasText,
-                  onPressed: !hasText
-                      ? null
-                      : () async {
-                          final text = await ClipboardHelper.paste();
-                          if (text != null && text.isNotEmpty) {
-                            ref
-                                .read(jsonAnalyzerProvider.notifier)
-                                .pasteFromClipboard(text);
-                            _snack(AppStrings.pastedFromClipboard);
-                          } else {
-                            _snack(AppStrings.clipboardEmpty);
-                          }
-                        },
-                );
-              },
-            ),
-            _iconBtn(
-              tooltip: AppStrings.clear,
-              icon: Icons.clear_all,
-              enabled: !isEmpty,
-              onPressed: isEmpty
-                  ? null
-                  : () {
-                      ref.read(jsonAnalyzerProvider.notifier).clear();
-                      _snack(AppStrings.cleared);
-                    },
-            ),
-
-            _divider(),
-
-            // ── Group 3: Transform ─────────────────────────────────────────
-            _iconBtn(
-              tooltip: AppStrings.format,
-              icon: Icons.format_align_left,
-              enabled: canAct,
-              onPressed: !canAct
-                  ? null
-                  : () async {
-                      await ref.read(jsonAnalyzerProvider.notifier).format();
-                      _snack(AppStrings.formatted);
-                    },
-            ),
-            _iconBtn(
-              tooltip: AppStrings.minify,
-              icon: Icons.compress,
-              enabled: canAct,
-              onPressed: !canAct
-                  ? null
-                  : () async {
-                      await ref.read(jsonAnalyzerProvider.notifier).minify();
-                      _snack(AppStrings.minified);
-                    },
-            ),
-            _popupIconBtn(
-              tooltip: 'Transform',
-              icon: Icons.transform,
-              enabled: canAct,
-              items: [
-                _menuItem(
-                  Icons.sort_by_alpha,
-                  'Sort Keys (A→Z)',
-                  () => ref
-                      .read(jsonAnalyzerProvider.notifier)
-                      .sortKeys(ascending: true),
-                ),
-                _menuItem(
-                  Icons.sort_by_alpha,
-                  'Sort Keys (Z→A)',
-                  () => ref
-                      .read(jsonAnalyzerProvider.notifier)
-                      .sortKeys(ascending: false),
-                ),
-                _menuItem(
-                  Icons.compress,
-                  'Flatten',
-                  () => ref.read(jsonAnalyzerProvider.notifier).flatten(),
-                ),
-              ],
-            ),
-            _popupIconBtn(
-              tooltip: 'Clean',
-              icon: Icons.cleaning_services,
-              enabled: canAct,
-              items: [
-                _menuItem(
-                  Icons.delete_outline,
-                  'Remove Nulls',
-                  () => ref.read(jsonAnalyzerProvider.notifier).removeNulls(),
-                ),
-                _menuItem(
-                  Icons.delete_sweep,
-                  'Remove Empty',
-                  () => ref.read(jsonAnalyzerProvider.notifier).removeEmpty(),
-                ),
-              ],
-            ),
-
-            _divider(),
-
-            // ── Group 4: Edit ──────────────────────────────────────────────
-            _iconBtn(
-              tooltip: 'Find & Replace',
-              icon: Icons.find_replace,
-              active: _showFindReplace,
-              onPressed: () =>
-                  setState(() => _showFindReplace = !_showFindReplace),
-            ),
-            ValueListenableBuilder<UndoHistoryValue>(
-              valueListenable: _undoController,
-              builder: (context, undoVal, _) => Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _iconBtn(
-                    tooltip: 'Undo',
-                    icon: Icons.undo,
-                    enabled: undoVal.canUndo,
-                    onPressed: undoVal.canUndo ? _undoController.undo : null,
-                  ),
-                  _iconBtn(
-                    tooltip: 'Redo',
-                    icon: Icons.redo,
-                    enabled: undoVal.canRedo,
-                    onPressed: undoVal.canRedo ? _undoController.redo : null,
-                  ),
-                ],
-              ),
-            ),
-          ],
-
-          // Read-only badge (replaces all edit controls)
-          if (isReadOnlyMode) _buildReadOnlyBadge(),
         ],
       ),
     );
