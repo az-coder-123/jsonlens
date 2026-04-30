@@ -14,7 +14,6 @@ import '../widgets/json_path_query_panel.dart';
 import '../widgets/json_schema_panel.dart';
 import '../widgets/json_statistics_panel.dart';
 import '../widgets/json_tree_view.dart';
-import '../widgets/toolbar.dart';
 import '../widgets/validation_indicator.dart';
 
 /// Main screen for the JSON Analyzer application.
@@ -57,19 +56,6 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
   void dispose() {
     _toolsTabController.dispose();
     super.dispose();
-  }
-
-  void _showMessage(String message) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(AppDimensions.paddingM),
-      ),
-    );
   }
 
   void _toggleTools() {
@@ -127,7 +113,6 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
   Widget _buildBody() {
     return Column(
       children: [
-        Toolbar(onShowMessage: _showMessage),
         if (_showTools) _buildToolsPanel(),
         Expanded(
           child: LayoutBuilder(
