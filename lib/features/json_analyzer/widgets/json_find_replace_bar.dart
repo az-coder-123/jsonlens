@@ -26,6 +26,7 @@ class JsonFindReplaceBar extends StatefulWidget {
     required this.controller,
     required this.onTextReplaced,
     required this.onClose,
+    this.onMatchLine,
   });
 
   /// The [TextEditingController] of the JSON editor.
@@ -35,6 +36,10 @@ class JsonFindReplaceBar extends StatefulWidget {
   final void Function(String newText) onTextReplaced;
 
   final VoidCallback onClose;
+
+  /// Called with the 1-based line number of the current match whenever
+  /// navigation moves to a new match. Called with null when there are no matches.
+  final void Function(int? lineNumber)? onMatchLine;
 
   @override
   State<JsonFindReplaceBar> createState() => _JsonFindReplaceBarState();
@@ -91,6 +96,7 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
         _matchLengths = [];
         _currentIndex = -1;
       });
+      widget.onMatchLine?.call(null);
       return;
     }
 
@@ -109,7 +115,11 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
       _matchLengths = lengths;
       _currentIndex = first;
     });
-    if (first >= 0) _selectMatch(first);
+    if (first >= 0) {
+      _selectMatch(first);
+    } else {
+      widget.onMatchLine?.call(null);
+    }
   }
 
   void _collectRegexMatches(
@@ -149,10 +159,19 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
 
   void _selectMatch(int index) {
     if (index < 0 || index >= _matchStarts.length) return;
+    final offset = _matchStarts[index];
     widget.controller.selection = TextSelection(
-      baseOffset: _matchStarts[index],
-      extentOffset: _matchStarts[index] + _matchLengths[index],
+      baseOffset: offset,
+      extentOffset: offset + _matchLengths[index],
     );
+    widget.onMatchLine?.call(_lineOfOffset(offset));
+  }
+
+  /// Returns the 1-based line number for a character [offset] in the text.
+  int _lineOfOffset(int offset) {
+    final text = widget.controller.text;
+    final safeOffset = offset.clamp(0, text.length);
+    return '\n'.allMatches(text.substring(0, safeOffset)).length + 1;
   }
 
   void _goNext() {

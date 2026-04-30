@@ -31,6 +31,7 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   Timer? _debounceTimer;
   bool _showFindReplace = false;
   int _lineCount = 1;
+  int? _matchLine; // 1-based line of current find match
 
   @override
   void initState() {
@@ -125,7 +126,11 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
             JsonFindReplaceBar(
               controller: _controller,
               onTextReplaced: _applyReplacedText,
-              onClose: () => setState(() => _showFindReplace = false),
+              onClose: () => setState(() {
+                _showFindReplace = false;
+                _matchLine = null;
+              }),
+              onMatchLine: (line) => setState(() => _matchLine = line),
             ),
           const Divider(height: 1),
           Expanded(
@@ -348,24 +353,33 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
-            children: List.generate(
-              _lineCount,
-              (i) => SizedBox(
+            children: List.generate(_lineCount, (i) {
+              final lineNum = i + 1;
+              final isActive = lineNum == _matchLine;
+              return Container(
                 height: lineHeight,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: AppDimensions.paddingS),
-                  child: Text(
-                    '${i + 1}',
-                    textAlign: TextAlign.right,
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: AppDimensions.fontSizeM,
-                      color: AppColors.textMuted,
-                      height: 1.5,
-                    ),
+                decoration: isActive
+                    ? BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(
+                          AppDimensions.radiusS,
+                        ),
+                      )
+                    : null,
+                padding: const EdgeInsets.only(right: AppDimensions.paddingS),
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '$lineNum',
+                  textAlign: TextAlign.right,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: AppDimensions.fontSizeM,
+                    color: isActive ? AppColors.primary : AppColors.textMuted,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                    height: 1.5,
                   ),
                 ),
-              ),
-            ),
+              );
+            }),
           ),
         ),
       ),
