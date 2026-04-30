@@ -79,6 +79,23 @@ Widget _buildHighlightedText(String text, String query, TextStyle style) {
 }
 
 // ---------------------------------------------------------------------------
+// Type helper
+// ---------------------------------------------------------------------------
+
+/// Returns the canonical type name for [v], used by the type-filter feature.
+///
+/// Possible return values: `'object'`, `'array'`, `'string'`, `'number'`,
+/// `'boolean'`, `'null'`.
+String _typeOf(dynamic v) {
+  if (v == null) return 'null';
+  if (v is Map) return 'object';
+  if (v is List) return 'array';
+  if (v is bool) return 'boolean'; // must precede num check
+  if (v is num) return 'number';
+  return 'string';
+}
+
+// ---------------------------------------------------------------------------
 // Copy helper
 // ---------------------------------------------------------------------------
 
@@ -132,6 +149,12 @@ class LazyJsonTree extends StatelessWidget {
   /// Called when the user selects an action from the node's context menu.
   final void Function(String path, TreeNodeAction action)? onNodeAction;
 
+  /// Set of type names whose nodes should be hidden.
+  ///
+  /// Possible values: `'object'`, `'array'`, `'string'`, `'number'`,
+  /// `'boolean'`, `'null'`. An empty set means all types are visible.
+  final Set<String> hiddenTypes;
+
   const LazyJsonTree({
     super.key,
     required this.data,
@@ -143,6 +166,7 @@ class LazyJsonTree extends StatelessWidget {
     this.onPathSelected,
     this.onValueChanged,
     this.onNodeAction,
+    this.hiddenTypes = const {},
   });
 
   @override
@@ -166,6 +190,7 @@ class LazyJsonTree extends StatelessWidget {
           onPathSelected: onPathSelected,
           onValueChanged: onValueChanged,
           onNodeAction: onNodeAction,
+          hiddenTypes: hiddenTypes,
         ),
       );
     }
@@ -195,6 +220,7 @@ class LazyJsonTree extends StatelessWidget {
           onPathSelected: onPathSelected,
           onValueChanged: onValueChanged,
           onNodeAction: onNodeAction,
+          hiddenTypes: hiddenTypes,
         );
       },
     );
@@ -223,6 +249,9 @@ class _LazyNode extends StatefulWidget {
   final void Function(String path, dynamic newValue)? onValueChanged;
   final void Function(String path, TreeNodeAction action)? onNodeAction;
 
+  /// Set of type names whose nodes should be hidden (propagated from [LazyJsonTree]).
+  final Set<String> hiddenTypes;
+
   const _LazyNode({
     required this.keyName,
     required this.value,
@@ -237,6 +266,7 @@ class _LazyNode extends StatefulWidget {
     this.onPathSelected,
     this.onValueChanged,
     this.onNodeAction,
+    this.hiddenTypes = const {},
   });
 
   @override
@@ -770,6 +800,7 @@ class _LazyNodeState extends State<_LazyNode> {
       onPathSelected: widget.onPathSelected,
       onValueChanged: widget.onValueChanged,
       onNodeAction: widget.onNodeAction,
+      hiddenTypes: widget.hiddenTypes,
     );
   }
 
@@ -849,6 +880,11 @@ class _LazyNodeState extends State<_LazyNode> {
 
   @override
   Widget build(BuildContext context) {
+    // Hide this node entirely when its type is filtered out.
+    if (widget.hiddenTypes.contains(_typeOf(widget.value))) {
+      return const SizedBox.shrink();
+    }
+
     final isContainer = widget.value is Map || widget.value is List;
     final indent = widget.depth * 12.0;
 

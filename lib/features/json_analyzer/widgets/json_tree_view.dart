@@ -43,6 +43,10 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   bool? _forceExpandAll;
 
   bool _isSearchVisible = false;
+  bool _isFilterVisible = false;
+
+  /// Types currently hidden. Values: 'object','array','string','number','boolean','null'.
+  final Set<String> _hiddenTypes = {};
 
   @override
   void dispose() {
@@ -70,6 +74,8 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       if (!_isSearchVisible) _clearSearch();
     });
   }
+
+  void _toggleFilter() => setState(() => _isFilterVisible = !_isFilterVisible);
 
   void _clearSearch() {
     setState(() {
@@ -361,6 +367,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         children: [
           _buildHeader(context),
           if (_isSearchVisible) _buildSearchBar(),
+          if (_isFilterVisible) _buildFilterBar(),
           if (_selectedPath.isNotEmpty) _buildBreadcrumbBar(),
           const Divider(height: 1),
           Expanded(
@@ -416,6 +423,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
           const Spacer(),
           _buildExpandCollapseButtons(),
           _buildSearchToggleButton(),
+          _buildFilterButton(),
           _buildSortKeysButton(),
           _buildSettingsButton(context),
         ],
@@ -462,6 +470,23 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         color: _isSearchVisible ? AppColors.primary : AppColors.textSecondary,
       ),
       onPressed: _toggleSearch,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+    );
+  }
+
+  Widget _buildFilterButton() {
+    final active = _hiddenTypes.isNotEmpty || _isFilterVisible;
+    return IconButton(
+      tooltip: _hiddenTypes.isNotEmpty
+          ? 'Type filter: ${6 - _hiddenTypes.length}/6 types visible'
+          : 'Filter by type',
+      icon: Icon(
+        Icons.filter_list,
+        size: AppDimensions.iconSizeS,
+        color: active ? AppColors.primary : AppColors.textSecondary,
+      ),
+      onPressed: _toggleFilter,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
     );
@@ -563,6 +588,114 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
                 Icons.close,
                 size: AppDimensions.iconSizeS,
                 color: AppColors.textSecondary,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Filter bar (2.4)
+  // -------------------------------------------------------------------------
+
+  Color _typeColor(String type) => switch (type) {
+    'object' || 'array' => AppColors.jsonBracket,
+    'string' => AppColors.jsonString,
+    'number' => AppColors.jsonNumber,
+    'boolean' => AppColors.jsonBoolean,
+    _ => AppColors.jsonNull,
+  };
+
+  Widget _buildFilterBar() {
+    const filters = [
+      ('object', '{}'),
+      ('array', '[]'),
+      ('string', '"'),
+      ('number', '#'),
+      ('boolean', 'T/F'),
+      ('null', '∅'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingM,
+        vertical: 6,
+      ),
+      color: AppColors.surface,
+      child: Row(
+        children: [
+          const Icon(Icons.filter_list, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: AppDimensions.paddingS),
+          Text(
+            'Show:',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: AppDimensions.fontSizeS,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: AppDimensions.paddingS),
+          ...filters.map((f) {
+            final type = f.$1;
+            final label = f.$2;
+            final isVisible = !_hiddenTypes.contains(type);
+            final typeColor = _typeColor(type);
+            return Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Tooltip(
+                message: isVisible ? 'Hide $type nodes' : 'Show $type nodes',
+                child: InkWell(
+                  onTap: () => setState(() {
+                    if (isVisible) {
+                      _hiddenTypes.add(type);
+                    } else {
+                      _hiddenTypes.remove(type);
+                    }
+                  }),
+                  borderRadius: BorderRadius.circular(4),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isVisible
+                          ? typeColor.withValues(alpha: 0.15)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: isVisible
+                            ? typeColor.withValues(alpha: 0.5)
+                            : AppColors.border,
+                      ),
+                    ),
+                    child: Text(
+                      label,
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: isVisible ? typeColor : AppColors.textMuted,
+                        decoration: isVisible
+                            ? null
+                            : TextDecoration.lineThrough,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+          const Spacer(),
+          if (_hiddenTypes.isNotEmpty)
+            GestureDetector(
+              onTap: () => setState(() => _hiddenTypes.clear()),
+              child: Text(
+                'Reset',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: AppDimensions.fontSizeS,
+                  color: AppColors.primary,
+                ),
               ),
             ),
         ],
@@ -736,6 +869,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       expansionGeneration: _expansionGeneration,
       forceExpandAll: _forceExpandAll,
       sortKeys: settings.sortKeys,
+      hiddenTypes: _hiddenTypes,
       onPathSelected: (path) => setState(() => _selectedPath = path),
       onValueChanged: _applyEdit,
       onNodeAction: _applyNodeAction,
