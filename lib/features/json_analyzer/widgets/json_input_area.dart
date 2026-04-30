@@ -235,6 +235,8 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
             ),
           ),
           const Spacer(),
+          // Format & Minify shortcuts
+          if (!isReadOnlyMode) _buildFormatMinifyButtons(),
           // Undo / Redo buttons
           if (!isReadOnlyMode) _buildUndoRedoButtons(),
           // Find & Replace toggle
@@ -463,6 +465,64 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   }
 
   /// Undo / Redo icon buttons driven by [UndoHistoryController].
+  Widget _buildFormatMinifyButtons() {
+    final isValid = ref.watch(isValidProvider);
+    final isEmpty = ref.watch(isEmptyProvider);
+    final enabled = isValid && !isEmpty;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: AppStrings.format,
+          icon: Icon(
+            Icons.format_align_left,
+            size: AppDimensions.iconSizeS,
+            color: enabled ? AppColors.textSecondary : AppColors.textMuted,
+          ),
+          onPressed: enabled
+              ? () async {
+                  await ref.read(jsonAnalyzerProvider.notifier).format();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(AppStrings.formatted),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.all(AppDimensions.paddingM),
+                    ));
+                  }
+                }
+              : null,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        ),
+        IconButton(
+          tooltip: AppStrings.minify,
+          icon: Icon(
+            Icons.compress,
+            size: AppDimensions.iconSizeS,
+            color: enabled ? AppColors.textSecondary : AppColors.textMuted,
+          ),
+          onPressed: enabled
+              ? () async {
+                  await ref.read(jsonAnalyzerProvider.notifier).minify();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(AppStrings.minified),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.all(AppDimensions.paddingM),
+                    ));
+                  }
+                }
+              : null,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        ),
+        const SizedBox(width: 4),
+      ],
+    );
+  }
+
   Widget _buildUndoRedoButtons() {
     return ValueListenableBuilder<UndoHistoryValue>(
       valueListenable: _undoController,

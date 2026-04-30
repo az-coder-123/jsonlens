@@ -44,30 +44,6 @@ class Toolbar extends ConsumerWidget {
             final clearEnabled = !isEmpty;
             return Row(
               children: [
-                IconButton(
-                  tooltip: AppStrings.format,
-                  onPressed: isValid && !isEmpty
-                      ? () => _handleFormat(ref)
-                      : null,
-                  icon: Icon(
-                    Icons.format_align_left,
-                    color: isValid && !isEmpty
-                        ? AppColors.textPrimary
-                        : AppColors.textMuted,
-                  ),
-                ),
-                IconButton(
-                  tooltip: AppStrings.minify,
-                  onPressed: isValid && !isEmpty
-                      ? () => _handleMinify(ref)
-                      : null,
-                  icon: Icon(
-                    Icons.compress,
-                    color: isValid && !isEmpty
-                        ? AppColors.textPrimary
-                        : AppColors.textMuted,
-                  ),
-                ),
                 const Spacer(),
                 IconButton(
                   tooltip: AppStrings.open,
@@ -102,9 +78,6 @@ class Toolbar extends ConsumerWidget {
                       case 'open':
                         await _handleOpen(ref);
                         break;
-                      case 'minify':
-                        if (isValid && !isEmpty) await _handleMinify(ref);
-                        break;
                     }
                   },
                   itemBuilder: (context) => [
@@ -128,10 +101,6 @@ class Toolbar extends ConsumerWidget {
                       enabled: clearEnabled,
                       child: Text(AppStrings.clear),
                     ),
-                    PopupMenuItem(
-                      value: 'minify',
-                      child: Text(AppStrings.minify),
-                    ),
                   ],
                 ),
               ],
@@ -148,30 +117,6 @@ class Toolbar extends ConsumerWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Left group: Format, Minify
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _ToolbarButton(
-                          icon: Icons.format_align_left,
-                          label: AppStrings.format,
-                          onPressed: isValid && !isEmpty
-                              ? () async => await _handleFormat(ref)
-                              : null,
-                        ),
-                        const SizedBox(width: AppDimensions.paddingS),
-                        _ToolbarButton(
-                          icon: Icons.compress,
-                          label: AppStrings.minify,
-                          onPressed: isValid && !isEmpty
-                              ? () async => await _handleMinify(ref)
-                              : null,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(width: 70),
-
                     // Right group: File / Edit / Export
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -256,21 +201,11 @@ class Toolbar extends ConsumerWidget {
     );
   }
 
-  Future<void> _handleFormat(WidgetRef ref) async {
-    await ref.read(jsonAnalyzerProvider.notifier).format();
-    onShowMessage(AppStrings.formatted);
-  }
-
   void _showFetchDialog(BuildContext context) {
     showDialog<void>(
       context: context,
       builder: (_) => const HttpRequestDialog(),
     );
-  }
-
-  Future<void> _handleMinify(WidgetRef ref) async {
-    await ref.read(jsonAnalyzerProvider.notifier).minify();
-    onShowMessage(AppStrings.minified);
   }
 
   void _handleClear(WidgetRef ref) {
