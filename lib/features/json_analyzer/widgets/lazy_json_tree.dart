@@ -161,6 +161,23 @@ class LazyJsonTree extends StatelessWidget {
   /// with a subtle primary-colour background.
   final String? highlightedPath;
 
+  /// Paths that must be force-expanded regardless of depth setting.
+  ///
+  /// Used during editor→tree sync to auto-open all ancestors of the
+  /// highlighted node so that [Scrollable.ensureVisible] can reach it.
+  final Set<String> forcedExpandedPaths;
+
+  /// GlobalKey attached to the currently highlighted node's container so that
+  /// [Scrollable.ensureVisible] can scroll to it.
+  final GlobalKey? highlightedNodeKey;
+
+  /// Optional controller for the root-level [ListView].
+  ///
+  /// Pass this from the parent so that the parent can pre-scroll the outer
+  /// list (which uses lazy rendering) before [Scrollable.ensureVisible] is
+  /// called on the highlighted node's key.
+  final ScrollController? scrollController;
+
   const LazyJsonTree({
     super.key,
     required this.data,
@@ -174,6 +191,9 @@ class LazyJsonTree extends StatelessWidget {
     this.onNodeAction,
     this.hiddenTypes = const {},
     this.highlightedPath,
+    this.forcedExpandedPaths = const {},
+    this.highlightedNodeKey,
+    this.scrollController,
   });
 
   @override
@@ -181,6 +201,7 @@ class LazyJsonTree extends StatelessWidget {
     if (data is List) {
       final list = data as List;
       return ListView.builder(
+        controller: scrollController,
         padding: const EdgeInsets.all(AppDimensions.paddingM),
         itemCount: list.length,
         itemBuilder: (context, index) => _LazyNode(
@@ -199,6 +220,8 @@ class LazyJsonTree extends StatelessWidget {
           onNodeAction: onNodeAction,
           hiddenTypes: hiddenTypes,
           highlightedPath: highlightedPath,
+          forcedExpandedPaths: forcedExpandedPaths,
+          highlightedNodeKey: highlightedNodeKey,
         ),
       );
     }
@@ -210,6 +233,7 @@ class LazyJsonTree extends StatelessWidget {
     if (sortKeys) entries.sort((a, b) => a.key.compareTo(b.key));
 
     return ListView.builder(
+      controller: scrollController,
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       itemCount: entries.length,
       itemBuilder: (context, index) {
@@ -230,6 +254,8 @@ class LazyJsonTree extends StatelessWidget {
           onNodeAction: onNodeAction,
           hiddenTypes: hiddenTypes,
           highlightedPath: highlightedPath,
+          forcedExpandedPaths: forcedExpandedPaths,
+          highlightedNodeKey: highlightedNodeKey,
         );
       },
     );
@@ -264,6 +290,12 @@ class _LazyNode extends StatefulWidget {
   /// JSON path to visually highlight (propagated from [LazyJsonTree]).
   final String? highlightedPath;
 
+  /// Paths that must be force-expanded (propagated from [LazyJsonTree]).
+  final Set<String> forcedExpandedPaths;
+
+  /// GlobalKey attached to the highlighted node for scroll-to (propagated from [LazyJsonTree]).
+  final GlobalKey? highlightedNodeKey;
+
   const _LazyNode({
     required this.keyName,
     required this.value,
@@ -280,6 +312,8 @@ class _LazyNode extends StatefulWidget {
     this.onNodeAction,
     this.hiddenTypes = const {},
     this.highlightedPath,
+    this.forcedExpandedPaths = const {},
+    this.highlightedNodeKey,
   });
 
   @override
@@ -315,7 +349,10 @@ class _LazyNodeState extends State<_LazyNode> {
     final signalChanged =
         oldWidget.expansionGeneration != widget.expansionGeneration;
     final queryChanged = oldWidget.searchQuery != widget.searchQuery;
-    if (signalChanged || queryChanged) {
+    // Targeted re-evaluation when forced-expansion state for this node changes.
+    final wasForced = oldWidget.forcedExpandedPaths.contains(widget.path);
+    final isForced = widget.forcedExpandedPaths.contains(widget.path);
+    if (signalChanged || queryChanged || wasForced != isForced) {
       setState(() => _expanded = _computeExpanded());
     }
   }
@@ -325,6 +362,10 @@ class _LazyNodeState extends State<_LazyNode> {
     if (widget.searchQuery.isNotEmpty) {
       return _matchesSearch(widget.keyName, widget.value, widget.searchQuery);
     }
+    // Force-expand specific ancestor paths for editor→tree sync.
+    // Checked before forceExpandAll so that cursor navigation in the editor
+    // can reveal a node even when the tree is in "Collapse All" mode.
+    if (widget.forcedExpandedPaths.contains(widget.path)) return true;
     // Honour programmatic expand/collapse signal.
     if (widget.forceExpandAll != null) return widget.forceExpandAll!;
     // Fall back to depth-based default.
@@ -815,6 +856,8 @@ class _LazyNodeState extends State<_LazyNode> {
       onNodeAction: widget.onNodeAction,
       hiddenTypes: widget.hiddenTypes,
       highlightedPath: widget.highlightedPath,
+      forcedExpandedPaths: widget.forcedExpandedPaths,
+      highlightedNodeKey: widget.highlightedNodeKey,
     );
   }
 
@@ -915,6 +958,7 @@ class _LazyNodeState extends State<_LazyNode> {
             onTap: () => widget.onPathSelected?.call(widget.path),
             onDoubleTap: widget.onValueChanged != null ? _startEditing : null,
             child: AnimatedContainer(
+              key: isHighlighted ? widget.highlightedNodeKey : null,
               duration: const Duration(milliseconds: 200),
               color: isHighlighted
                   ? AppColors.primary.withValues(alpha: 0.12)
@@ -986,6 +1030,7 @@ class _LazyNodeState extends State<_LazyNode> {
       child: Focus(
         onKeyEvent: _handleKeyEvent,
         child: AnimatedContainer(
+          key: isHighlighted ? widget.highlightedNodeKey : null,
           duration: const Duration(milliseconds: 200),
           color: isHighlighted
               ? AppColors.primary.withValues(alpha: 0.08)

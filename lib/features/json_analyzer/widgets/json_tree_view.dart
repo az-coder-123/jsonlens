@@ -53,6 +53,18 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   JsonPositionMapper? _positionMapper;
   String _lastMappedInput = '';
 
+  /// Key attached to the highlighted node; used by [Scrollable.ensureVisible].
+  final GlobalKey _highlightedNodeKey = GlobalKey();
+
+  /// Ancestor paths that must remain expanded so the highlighted node is reachable.
+  Set<String> _forcedExpandedPaths = {};
+
+  /// Controls the outer [ListView] inside [LazyJsonTree].
+  ///
+  /// Used to pre-scroll the list toward the target area before the frame-retry
+  /// loop runs, ensuring that virtualised items get built in time.
+  final ScrollController _treeScrollController = ScrollController();
+
   /// Returns a cached [JsonPositionMapper] for the current input text.
   JsonPositionMapper? _getMapper() {
     final input = ref.read(inputProvider);
@@ -67,6 +79,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   @override
   void dispose() {
     _searchController.dispose();
+    _treeScrollController.dispose();
     super.dispose();
   }
 
@@ -98,6 +111,106 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       _searchQuery = '';
       _searchController.clear();
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Bidirectional sync helpers (2.5)
+  // -------------------------------------------------------------------------
+
+  /// Computes all ancestor paths of [path] that need to be force-expanded.
+  ///
+  /// For `$.users[0].profile.name` returns:
+  /// `{'$', '$.users', '$.users[0]', '$.users[0].profile'}`
+  Set<String> _ancestorPaths(String path) {
+    final segments = _parseBreadcrumbs(path);
+    final ancestors = <String>{};
+    for (int i = 0; i < segments.length - 1; i++) {
+      ancestors.add(_pathFromSegments(segments, i));
+    }
+    return ancestors;
+  }
+
+  /// Updates [_selectedPath] and [_forcedExpandedPaths], then schedules
+  /// a scroll to bring the highlighted node into view.
+  void _updateSelectedPath(String path) {
+    setState(() {
+      _selectedPath = path;
+      _forcedExpandedPaths = _ancestorPaths(path);
+    });
+    _scheduleScrollToHighlighted();
+  }
+
+  /// Calls [Scrollable.ensureVisible] on [_highlightedNodeKey].
+  ///
+  /// Because the outer [ListView] is lazy, the target widget may not be in the
+  /// tree yet.  The method therefore:
+  ///   1. Pre-scrolls the outer list to the approximate area of the target so
+  ///      that Flutter builds the relevant subtree.
+  ///   2. Retries up to [_maxScrollAttempts] post-frame callbacks, stopping as
+  ///      soon as the key's context becomes available.
+  static const int _maxScrollAttempts = 10;
+
+  void _scheduleScrollToHighlighted({int attempt = 0}) {
+    // On the very first miss, nudge the outer scroll toward the target region
+    // so the lazy ListView renders the right items.
+    if (attempt == 0) _preScrollToTarget();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _highlightedNodeKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          alignment: 0.3,
+        );
+      } else if (attempt < _maxScrollAttempts) {
+        _scheduleScrollToHighlighted(attempt: attempt + 1);
+      }
+    });
+  }
+
+  /// Jumps the outer [ListView] to a proportional position estimated from
+  /// the root-level index of [_selectedPath].
+  ///
+  /// This causes the lazy virtualiser to build items near the target, so
+  /// subsequent [Scrollable.ensureVisible] calls can find the key.
+  void _preScrollToTarget() {
+    if (!_treeScrollController.hasClients) return;
+    final pos = _treeScrollController.position;
+    if (pos.maxScrollExtent <= 0) return;
+
+    final parsedData = ref.read(parsedDataProvider);
+    if (parsedData == null) return;
+
+    final fraction = _estimateRootFraction(_selectedPath, parsedData);
+    final target = (fraction * pos.maxScrollExtent).clamp(
+      0.0,
+      pos.maxScrollExtent,
+    );
+    _treeScrollController.jumpTo(target);
+  }
+
+  /// Returns a [0, 1] fraction representing roughly where the root ancestor
+  /// of [path] sits inside the root-level collection.
+  ///
+  /// For arrays: extracts the first `[N]` index and divides by list length.
+  /// For objects: finds the position of the root key in the key list.
+  double _estimateRootFraction(String path, dynamic data) {
+    if (data is List && data.isNotEmpty) {
+      final m = RegExp(r'^\$\[(\d+)\]').firstMatch(path);
+      if (m != null) return int.parse(m.group(1)!) / data.length;
+    } else if (data is Map<String, dynamic> && data.isNotEmpty) {
+      final m = RegExp(r'^\$\.([^.\[]+)').firstMatch(path);
+      if (m != null) {
+        final key = m.group(1)!;
+        final keys = data.keys.toList();
+        final idx = keys.indexOf(key);
+        if (idx >= 0) return idx / keys.length;
+      }
+    }
+    return 0.0;
   }
 
   // -------------------------------------------------------------------------
@@ -377,7 +490,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       if (next < 0) return;
       final path = _getMapper()?.pathForLine(next);
       if (path != null && path != _selectedPath) {
-        setState(() => _selectedPath = path);
+        _updateSelectedPath(path);
       }
     });
 
@@ -896,8 +1009,11 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       sortKeys: settings.sortKeys,
       hiddenTypes: _hiddenTypes,
       highlightedPath: _selectedPath,
+      forcedExpandedPaths: _forcedExpandedPaths,
+      highlightedNodeKey: _highlightedNodeKey,
+      scrollController: _treeScrollController,
       onPathSelected: (path) {
-        setState(() => _selectedPath = path);
+        _updateSelectedPath(path);
         // Tree → Editor: scroll editor to the matching line.
         final line = _getMapper()?.lineForPath(path);
         if (line != null) {
