@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -12,9 +11,12 @@ import '../../../core/settings/settings_provider.dart';
 import '../../../core/utils/json_path.dart';
 import '../../../core/utils/json_position_mapper.dart';
 import '../providers/json_analyzer_provider.dart';
+import 'add_key_dialog.dart';
+import 'breadcrumb_bar.dart';
 import 'depth_dialog.dart';
 import 'lazy_json_tree.dart';
 import 'processing_overlay.dart';
+import 'type_filter_bar.dart';
 
 /// Tree view widget for displaying JSON in an expandable/collapsible tree.
 ///
@@ -383,7 +385,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
 
     final keyName = await showDialog<String>(
       context: context,
-      builder: (_) => const _AddKeyDialog(),
+      builder: (_) => const AddKeyDialog(),
     );
     if (keyName == null || keyName.isEmpty) return;
 
@@ -702,6 +704,18 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   // Filter bar (2.4)
   // -------------------------------------------------------------------------
 
+  void _toggleTypeFilter(String type) {
+    setState(() {
+      if (_hiddenTypes.contains(type)) {
+        _hiddenTypes.remove(type);
+      } else {
+        _hiddenTypes.add(type);
+      }
+    });
+  }
+
+  void _resetTypeFilters() => setState(() => _hiddenTypes.clear());
+
   Color _typeColor(String type) => switch (type) {
     'object' || 'array' => AppColors.jsonBracket,
     'string' => AppColors.jsonString,
@@ -711,98 +725,11 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   };
 
   Widget _buildFilterBar() {
-    const filters = [
-      ('object', '{}'),
-      ('array', '[]'),
-      ('string', '"'),
-      ('number', '#'),
-      ('boolean', 'T/F'),
-      ('null', '∅'),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.paddingM,
-        vertical: 6,
-      ),
-      color: AppColors.surface,
-      child: Row(
-        children: [
-          const Icon(Icons.filter_list, size: 14, color: AppColors.textMuted),
-          const SizedBox(width: AppDimensions.paddingS),
-          Text(
-            'Show:',
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: AppDimensions.fontSizeS,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(width: AppDimensions.paddingS),
-          ...filters.map((f) {
-            final type = f.$1;
-            final label = f.$2;
-            final isVisible = !_hiddenTypes.contains(type);
-            final typeColor = _typeColor(type);
-            return Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Tooltip(
-                message: isVisible ? 'Hide $type nodes' : 'Show $type nodes',
-                child: InkWell(
-                  onTap: () => setState(() {
-                    if (isVisible) {
-                      _hiddenTypes.add(type);
-                    } else {
-                      _hiddenTypes.remove(type);
-                    }
-                  }),
-                  borderRadius: BorderRadius.circular(4),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isVisible
-                          ? typeColor.withValues(alpha: 0.15)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: isVisible
-                            ? typeColor.withValues(alpha: 0.5)
-                            : AppColors.border,
-                      ),
-                    ),
-                    child: Text(
-                      label,
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: isVisible ? typeColor : AppColors.textMuted,
-                        decoration: isVisible
-                            ? null
-                            : TextDecoration.lineThrough,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-          const Spacer(),
-          if (_hiddenTypes.isNotEmpty)
-            GestureDetector(
-              onTap: () => setState(() => _hiddenTypes.clear()),
-              child: Text(
-                'Reset',
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: AppDimensions.fontSizeS,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-        ],
-      ),
+    return TypeFilterBar(
+      hiddenTypes: _hiddenTypes,
+      typeColor: _typeColor,
+      onToggleType: _toggleTypeFilter,
+      onReset: _resetTypeFilters,
     );
   }
 
@@ -827,70 +754,10 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   }
 
   Widget _buildBreadcrumbBar() {
-    final segments = JsonPath.breadcrumbTokens(_selectedPath);
-
-    return Container(
-      height: 32,
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimensions.paddingM,
-              ),
-              child: Row(
-                children: [
-                  for (int i = 0; i < segments.length; i++) ...[
-                    _BreadcrumbSegment(
-                      label: segments[i],
-                      isLast: i == segments.length - 1,
-                      isArrayIndex: segments[i].startsWith('['),
-                      onTap: () => setState(
-                        () => _selectedPath = _pathFromSegments(segments, i),
-                      ),
-                    ),
-                    if (i < segments.length - 1)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 2),
-                        child: Icon(
-                          Icons.chevron_right,
-                          size: 12,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          // Copy path button.
-          InkWell(
-            onTap: () async {
-              await Clipboard.setData(ClipboardData(text: _selectedPath));
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('JSON path copied to clipboard'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
-            borderRadius: BorderRadius.circular(4),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: AppDimensions.paddingS,
-                vertical: 4,
-              ),
-              child: Icon(Icons.copy, size: 12, color: AppColors.textMuted),
-            ),
-          ),
-        ],
-      ),
+    return BreadcrumbBar(
+      selectedPath: _selectedPath,
+      buildPath: _pathFromSegments,
+      onPathSelected: (path) => setState(() => _selectedPath = path),
     );
   }
 
@@ -945,161 +812,6 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       },
       onValueChanged: _applyEdit,
       onNodeAction: _applyNodeAction,
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Add-key dialog
-// ---------------------------------------------------------------------------
-
-/// Dialog that prompts the user for a key name when adding a node to a Map.
-class _AddKeyDialog extends StatefulWidget {
-  const _AddKeyDialog();
-
-  @override
-  State<_AddKeyDialog> createState() => _AddKeyDialogState();
-}
-
-class _AddKeyDialogState extends State<_AddKeyDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-        side: const BorderSide(color: AppColors.border),
-      ),
-      title: const Text(
-        'Add key',
-        style: TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: AppDimensions.fontSizeL,
-        ),
-      ),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        style: GoogleFonts.jetBrainsMono(
-          fontSize: AppDimensions.fontSizeS,
-          color: AppColors.textPrimary,
-        ),
-        decoration: InputDecoration(
-          hintText: 'Key name',
-          hintStyle: GoogleFonts.jetBrainsMono(
-            fontSize: AppDimensions.fontSizeS,
-            color: AppColors.textMuted,
-          ),
-          filled: true,
-          fillColor: AppColors.surfaceVariant,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: AppDimensions.paddingM,
-            vertical: AppDimensions.paddingS,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-            borderSide: const BorderSide(color: AppColors.border),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-            borderSide: const BorderSide(color: AppColors.border),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-            borderSide: const BorderSide(
-              color: AppColors.borderFocused,
-              width: 1.5,
-            ),
-          ),
-        ),
-        onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.buttonPrimary,
-            foregroundColor: AppColors.textPrimary,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-            ),
-          ),
-          child: const Text('Add'),
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Breadcrumb segment widget
-// ---------------------------------------------------------------------------
-///
-/// The last (active) segment is rendered in [AppColors.primary]; ancestor
-/// segments are muted but still tappable so the user can jump up the path.
-class _BreadcrumbSegment extends StatefulWidget {
-  final String label;
-  final bool isLast;
-  final bool isArrayIndex;
-  final VoidCallback onTap;
-
-  const _BreadcrumbSegment({
-    required this.label,
-    required this.isLast,
-    required this.isArrayIndex,
-    required this.onTap,
-  });
-
-  @override
-  State<_BreadcrumbSegment> createState() => _BreadcrumbSegmentState();
-}
-
-class _BreadcrumbSegmentState extends State<_BreadcrumbSegment> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color color;
-    if (widget.isLast) {
-      color = AppColors.primary;
-    } else if (_hovered) {
-      color = AppColors.textSecondary;
-    } else {
-      color = AppColors.textMuted;
-    }
-
-    // Array indices ([0]) use a slightly different style.
-    final fontStyle = widget.isArrayIndex ? FontStyle.italic : FontStyle.normal;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Text(
-          widget.label,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 11,
-            color: color,
-            fontStyle: fontStyle,
-            fontWeight: widget.isLast ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
-      ),
     );
   }
 }
