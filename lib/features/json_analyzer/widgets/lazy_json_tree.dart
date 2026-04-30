@@ -8,6 +8,13 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 
 // ---------------------------------------------------------------------------
+// Node action enum
+// ---------------------------------------------------------------------------
+
+/// Actions available in the tree node right-click / long-press context menu.
+enum TreeNodeAction { addKey, addItem, delete, duplicate }
+
+// ---------------------------------------------------------------------------
 // Search helpers
 // ---------------------------------------------------------------------------
 
@@ -122,6 +129,9 @@ class LazyJsonTree extends StatelessWidget {
   /// Receives the full JSON-Path string and the parsed new value.
   final void Function(String path, dynamic newValue)? onValueChanged;
 
+  /// Called when the user selects an action from the node's context menu.
+  final void Function(String path, TreeNodeAction action)? onNodeAction;
+
   const LazyJsonTree({
     super.key,
     required this.data,
@@ -132,6 +142,7 @@ class LazyJsonTree extends StatelessWidget {
     this.sortKeys = false,
     this.onPathSelected,
     this.onValueChanged,
+    this.onNodeAction,
   });
 
   @override
@@ -154,6 +165,7 @@ class LazyJsonTree extends StatelessWidget {
           sortKeys: sortKeys,
           onPathSelected: onPathSelected,
           onValueChanged: onValueChanged,
+          onNodeAction: onNodeAction,
         ),
       );
     }
@@ -182,6 +194,7 @@ class LazyJsonTree extends StatelessWidget {
           sortKeys: sortKeys,
           onPathSelected: onPathSelected,
           onValueChanged: onValueChanged,
+          onNodeAction: onNodeAction,
         );
       },
     );
@@ -208,6 +221,7 @@ class _LazyNode extends StatefulWidget {
   final bool sortKeys;
   final void Function(String path)? onPathSelected;
   final void Function(String path, dynamic newValue)? onValueChanged;
+  final void Function(String path, TreeNodeAction action)? onNodeAction;
 
   const _LazyNode({
     required this.keyName,
@@ -222,6 +236,7 @@ class _LazyNode extends StatefulWidget {
     required this.sortKeys,
     this.onPathSelected,
     this.onValueChanged,
+    this.onNodeAction,
   });
 
   @override
@@ -585,6 +600,68 @@ class _LazyNodeState extends State<_LazyNode> {
   }
 
   // -------------------------------------------------------------------------
+  // Context menu
+  // -------------------------------------------------------------------------
+
+  Future<void> _showContextMenu(BuildContext ctx, Offset globalOffset) async {
+    final overlay = Overlay.of(ctx).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromLTWH(globalOffset.dx, globalOffset.dy, 1, 1),
+      Offset.zero & overlay.size,
+    );
+
+    final isMap = widget.value is Map;
+    final isList = widget.value is List;
+
+    final action = await showMenu<TreeNodeAction>(
+      context: ctx,
+      position: position,
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      items: [
+        if (isMap)
+          const PopupMenuItem(
+            value: TreeNodeAction.addKey,
+            child: _ContextMenuItem(
+              icon: Icons.add_box_outlined,
+              label: 'Add key',
+            ),
+          ),
+        if (isList)
+          const PopupMenuItem(
+            value: TreeNodeAction.addItem,
+            child: _ContextMenuItem(
+              icon: Icons.playlist_add,
+              label: 'Add item',
+            ),
+          ),
+        const PopupMenuItem(
+          value: TreeNodeAction.duplicate,
+          child: _ContextMenuItem(
+            icon: Icons.copy_all_outlined,
+            label: 'Duplicate',
+          ),
+        ),
+        const PopupMenuItem(
+          value: TreeNodeAction.delete,
+          child: _ContextMenuItem(
+            icon: Icons.delete_outline,
+            label: 'Delete',
+            isDestructive: true,
+          ),
+        ),
+      ],
+    );
+
+    if (action != null && mounted) {
+      widget.onNodeAction?.call(widget.path, action);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Copy button
   // -------------------------------------------------------------------------
 
@@ -692,6 +769,7 @@ class _LazyNodeState extends State<_LazyNode> {
       sortKeys: widget.sortKeys,
       onPathSelected: widget.onPathSelected,
       onValueChanged: widget.onValueChanged,
+      onNodeAction: widget.onNodeAction,
     );
   }
 
@@ -776,30 +854,101 @@ class _LazyNodeState extends State<_LazyNode> {
 
     // ----- Leaf node -----
     if (!isContainer) {
-      return Focus(
-        onKeyEvent: _handleKeyEvent,
-        child: GestureDetector(
-          onTap: () => widget.onPathSelected?.call(widget.path),
-          onDoubleTap: widget.onValueChanged != null ? _startEditing : null,
-          child: Padding(
-            padding: EdgeInsets.only(left: indent, top: 3, bottom: 3),
-            child: _isEditing
-                ? Row(
-                    children: [
-                      _buildTypeIcon(widget.value),
-                      Flexible(
-                        child: _buildHighlightedText(
-                          '${widget.keyName}: ',
-                          widget.searchQuery,
-                          _keyStyle(),
+      return GestureDetector(
+        onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
+        onLongPressStart: (d) => _showContextMenu(context, d.globalPosition),
+        child: Focus(
+          onKeyEvent: _handleKeyEvent,
+          child: GestureDetector(
+            onTap: () => widget.onPathSelected?.call(widget.path),
+            onDoubleTap: widget.onValueChanged != null ? _startEditing : null,
+            child: Padding(
+              padding: EdgeInsets.only(left: indent, top: 3, bottom: 3),
+              child: _isEditing
+                  ? Row(
+                      children: [
+                        _buildTypeIcon(widget.value),
+                        Flexible(
+                          child: _buildHighlightedText(
+                            '${widget.keyName}: ',
+                            widget.searchQuery,
+                            _keyStyle(),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: AppDimensions.paddingS),
-                      Expanded(child: _buildInlineEditor()),
-                    ],
-                  )
-                : Row(
+                        const SizedBox(width: AppDimensions.paddingS),
+                        Expanded(child: _buildInlineEditor()),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        _buildTypeIcon(widget.value),
+                        Flexible(
+                          child: _buildHighlightedText(
+                            '${widget.keyName}: ',
+                            widget.searchQuery,
+                            _keyStyle(),
+                          ),
+                        ),
+                        const SizedBox(width: AppDimensions.paddingS),
+                        Expanded(child: _buildValuePreview()),
+                        if (widget.onValueChanged != null)
+                          Tooltip(
+                            message: 'Edit value (double-click)',
+                            child: InkWell(
+                              onTap: _startEditing,
+                              borderRadius: BorderRadius.circular(
+                                AppDimensions.radiusS,
+                              ),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
+                                ),
+                                child: Icon(
+                                  Icons.edit,
+                                  size: 11,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ),
+                          ),
+                        _buildCopyButton(),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ----- Container node (Map or List) -----
+    return GestureDetector(
+      onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
+      onLongPressStart: (d) => _showContextMenu(context, d.globalPosition),
+      child: Focus(
+        onKeyEvent: _handleKeyEvent,
+        child: Padding(
+          padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header row — tap toggles expansion and reports path.
+              InkWell(
+                onTap: () {
+                  setState(() => _expanded = !_expanded);
+                  widget.onPathSelected?.call(widget.path);
+                },
+                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
                     children: [
+                      Icon(
+                        _expanded ? Icons.expand_more : Icons.chevron_right,
+                        size: AppDimensions.iconSizeS,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 2),
                       _buildTypeIcon(widget.value),
                       Flexible(
                         child: _buildHighlightedText(
@@ -810,80 +959,52 @@ class _LazyNodeState extends State<_LazyNode> {
                       ),
                       const SizedBox(width: AppDimensions.paddingS),
                       Expanded(child: _buildValuePreview()),
-                      if (widget.onValueChanged != null)
-                        Tooltip(
-                          message: 'Edit value (double-click)',
-                          child: InkWell(
-                            onTap: _startEditing,
-                            borderRadius: BorderRadius.circular(
-                              AppDimensions.radiusS,
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 2,
-                              ),
-                              child: Icon(
-                                Icons.edit,
-                                size: 11,
-                                color: AppColors.textMuted,
-                              ),
-                            ),
-                          ),
-                        ),
                       _buildCopyButton(),
                     ],
                   ),
-          ),
-        ),
-      );
-    }
-
-    // ----- Container node (Map or List) -----
-    return Focus(
-      onKeyEvent: _handleKeyEvent,
-      child: Padding(
-        padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header row — tap toggles expansion and reports path.
-            InkWell(
-              onTap: () {
-                setState(() => _expanded = !_expanded);
-                widget.onPathSelected?.call(widget.path);
-              },
-              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  children: [
-                    Icon(
-                      _expanded ? Icons.expand_more : Icons.chevron_right,
-                      size: AppDimensions.iconSizeS,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 2),
-                    _buildTypeIcon(widget.value),
-                    Flexible(
-                      child: _buildHighlightedText(
-                        '${widget.keyName}: ',
-                        widget.searchQuery,
-                        _keyStyle(),
-                      ),
-                    ),
-                    const SizedBox(width: AppDimensions.paddingS),
-                    Expanded(child: _buildValuePreview()),
-                    _buildCopyButton(),
-                  ],
                 ),
               ),
-            ),
-            // Children — built lazily, only when expanded.
-            if (_expanded) _buildChildrenWidget(),
-          ],
+              // Children — built lazily, only when expanded.
+              if (_expanded) _buildChildrenWidget(),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Context menu item widget
+// ---------------------------------------------------------------------------
+
+class _ContextMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isDestructive;
+
+  const _ContextMenuItem({
+    required this.icon,
+    required this.label,
+    this.isDestructive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isDestructive ? AppColors.error : AppColors.textPrimary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: AppDimensions.iconSizeS, color: color),
+        const SizedBox(width: AppDimensions.paddingS),
+        Text(
+          label,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: AppDimensions.fontSizeS,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }

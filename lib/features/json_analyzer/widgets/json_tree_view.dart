@@ -168,6 +168,178 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   }
 
   // -------------------------------------------------------------------------
+  // Node action application (2.3)
+  // -------------------------------------------------------------------------
+
+  /// Navigates [data] to the node at exactly [segments].
+  dynamic _nodeAtSegments(dynamic data, List<Object> segments) {
+    dynamic current = data;
+    for (final seg in segments) {
+      if (seg is String && current is Map<String, dynamic>) {
+        current = current[seg];
+      } else if (seg is int && current is List) {
+        current = current[seg];
+      } else {
+        return null;
+      }
+    }
+    return current;
+  }
+
+  /// Dispatches a context menu action received from [LazyJsonTree].
+  Future<void> _applyNodeAction(String path, TreeNodeAction action) async {
+    final parsedData = ref.read(parsedDataProvider);
+    if (parsedData == null) return;
+    final segments = _pathSegments(path);
+
+    switch (action) {
+      case TreeNodeAction.delete:
+        await _deleteNode(parsedData, segments);
+      case TreeNodeAction.addKey:
+        await _addKey(parsedData, segments);
+      case TreeNodeAction.addItem:
+        await _addItem(parsedData, segments);
+      case TreeNodeAction.duplicate:
+        await _duplicateNode(parsedData, segments);
+    }
+  }
+
+  Future<void> _deleteNode(dynamic data, List<Object> segments) async {
+    if (segments.isEmpty) return;
+
+    final node = _nodeAtSegments(data, segments);
+    final isContainer = node is Map || node is List;
+
+    if (isContainer) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          title: const Text(
+            'Delete node',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: AppDimensions.fontSizeL,
+            ),
+          ),
+          content: const Text(
+            'This will delete the node and all its children.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.textSecondary,
+              ),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: AppColors.textPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                ),
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    // Navigate to parent and remove the key/index.
+    final parentSegs = segments.sublist(0, segments.length - 1);
+    final parent = parentSegs.isEmpty
+        ? data
+        : _nodeAtSegments(data, parentSegs);
+    final last = segments.last;
+
+    if (last is String && parent is Map<String, dynamic>) {
+      parent.remove(last);
+    } else if (last is int && parent is List) {
+      parent.removeAt(last);
+    } else {
+      return;
+    }
+
+    final json = const JsonEncoder.withIndent('  ').convert(data);
+    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+  }
+
+  Future<void> _addKey(dynamic data, List<Object> segments) async {
+    final node = _nodeAtSegments(data, segments);
+    if (node is! Map<String, dynamic>) return;
+
+    final keyName = await showDialog<String>(
+      context: context,
+      builder: (_) => const _AddKeyDialog(),
+    );
+    if (keyName == null || keyName.isEmpty) return;
+
+    // Ensure the key is unique.
+    String finalKey = keyName;
+    int attempt = 1;
+    while (node.containsKey(finalKey)) {
+      finalKey = '$keyName ($attempt)';
+      attempt++;
+    }
+
+    node[finalKey] = null;
+
+    final json = const JsonEncoder.withIndent('  ').convert(data);
+    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+  }
+
+  Future<void> _addItem(dynamic data, List<Object> segments) async {
+    final node = _nodeAtSegments(data, segments);
+    if (node is! List) return;
+
+    node.add(null);
+
+    final json = const JsonEncoder.withIndent('  ').convert(data);
+    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+  }
+
+  Future<void> _duplicateNode(dynamic data, List<Object> segments) async {
+    if (segments.isEmpty) return;
+
+    final node = _nodeAtSegments(data, segments);
+    // Deep copy via JSON round-trip.
+    final deepCopy = jsonDecode(jsonEncode(node));
+
+    final parentSegs = segments.sublist(0, segments.length - 1);
+    final parent = parentSegs.isEmpty
+        ? data
+        : _nodeAtSegments(data, parentSegs);
+    final last = segments.last;
+
+    if (last is String && parent is Map<String, dynamic>) {
+      String copyKey = '${last}_copy';
+      int attempt = 1;
+      while (parent.containsKey(copyKey)) {
+        copyKey = '${last}_copy_$attempt';
+        attempt++;
+      }
+      parent[copyKey] = deepCopy;
+    } else if (last is int && parent is List) {
+      parent.insert(last + 1, deepCopy);
+    } else {
+      return;
+    }
+
+    final json = const JsonEncoder.withIndent('  ').convert(data);
+    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+  }
+
+  // -------------------------------------------------------------------------
   // Build
   // -------------------------------------------------------------------------
 
@@ -566,6 +738,102 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       sortKeys: settings.sortKeys,
       onPathSelected: (path) => setState(() => _selectedPath = path),
       onValueChanged: _applyEdit,
+      onNodeAction: _applyNodeAction,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Add-key dialog
+// ---------------------------------------------------------------------------
+
+/// Dialog that prompts the user for a key name when adding a node to a Map.
+class _AddKeyDialog extends StatefulWidget {
+  const _AddKeyDialog();
+
+  @override
+  State<_AddKeyDialog> createState() => _AddKeyDialogState();
+}
+
+class _AddKeyDialogState extends State<_AddKeyDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      title: const Text(
+        'Add key',
+        style: TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: AppDimensions.fontSizeL,
+        ),
+      ),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: AppDimensions.fontSizeS,
+          color: AppColors.textPrimary,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Key name',
+          hintStyle: GoogleFonts.jetBrainsMono(
+            fontSize: AppDimensions.fontSizeS,
+            color: AppColors.textMuted,
+          ),
+          filled: true,
+          fillColor: AppColors.surfaceVariant,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.paddingM,
+            vertical: AppDimensions.paddingS,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+            borderSide: const BorderSide(
+              color: AppColors.borderFocused,
+              width: 1.5,
+            ),
+          ),
+        ),
+        onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.buttonPrimary,
+            foregroundColor: AppColors.textPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+            ),
+          ),
+          child: const Text('Add'),
+        ),
+      ],
     );
   }
 }
@@ -573,8 +841,6 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
 // ---------------------------------------------------------------------------
 // Breadcrumb segment widget
 // ---------------------------------------------------------------------------
-
-/// A single clickable segment in the breadcrumb navigation bar.
 ///
 /// The last (active) segment is rendered in [AppColors.primary]; ancestor
 /// segments are muted but still tappable so the user can jump up the path.
