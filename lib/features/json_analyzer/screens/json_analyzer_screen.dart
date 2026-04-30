@@ -12,6 +12,7 @@ import '../widgets/advanced_toolbar.dart';
 import '../widgets/json_compare_panel.dart';
 import '../widgets/json_input_area.dart';
 import '../widgets/json_path_query_panel.dart';
+import '../widgets/json_schema_panel.dart';
 import '../widgets/json_search_panel.dart';
 import '../widgets/json_statistics_panel.dart';
 import '../widgets/json_tree_view.dart';
@@ -43,7 +44,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
   @override
   void initState() {
     super.initState();
-    _toolsTabController = TabController(length: 4, vsync: this);
+    _toolsTabController = TabController(length: 5, vsync: this);
 
     // Trigger a background version check (non-blocking)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -219,6 +220,16 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
                   ],
                 ),
               ),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.schema, size: AppDimensions.iconSizeS),
+                    SizedBox(width: AppDimensions.paddingXS),
+                    Text('Schema'),
+                  ],
+                ),
+              ),
             ],
             indicatorSize: TabBarIndicatorSize.tab,
             dividerColor: AppColors.border,
@@ -231,6 +242,7 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
                 JsonPathQueryPanel(),
                 JsonComparePanel(),
                 _HistoryPlaceholder(),
+                JsonSchemaPanel(),
               ],
             ),
           ),
