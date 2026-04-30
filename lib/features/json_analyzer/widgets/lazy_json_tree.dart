@@ -6,6 +6,10 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
+import 'container_node_header.dart';
+import 'inline_editor.dart';
+import 'leaf_node_content.dart';
+import 'node_children.dart';
 
 // ---------------------------------------------------------------------------
 // Node action enum
@@ -577,109 +581,12 @@ class _LazyNodeState extends State<_LazyNode> {
   }
 
   Widget _buildInlineEditor() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        KeyboardListener(
-          focusNode: FocusNode(), // wrapper just for Escape
-          onKeyEvent: (event) {
-            if (event is KeyDownEvent &&
-                event.logicalKey == LogicalKeyboardKey.escape) {
-              _cancelEditing();
-            }
-          },
-          child: TextField(
-            controller: _editController,
-            focusNode: _editFocus,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: AppDimensions.fontSizeS,
-              color: _editError != null
-                  ? AppColors.error
-                  : AppColors.textPrimary,
-            ),
-            decoration: InputDecoration(
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 4,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                borderSide: BorderSide(
-                  color: _editError != null
-                      ? AppColors.error
-                      : AppColors.borderFocused,
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                borderSide: BorderSide(
-                  color: _editError != null
-                      ? AppColors.error
-                      : AppColors.borderFocused,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                borderSide: BorderSide(
-                  color: _editError != null
-                      ? AppColors.error
-                      : AppColors.primary,
-                  width: 1.5,
-                ),
-              ),
-              hintText: 'Enter value…',
-              hintStyle: GoogleFonts.jetBrainsMono(
-                fontSize: AppDimensions.fontSizeS,
-                color: AppColors.textMuted,
-              ),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Tooltip(
-                    message: 'Apply (Enter)',
-                    child: InkWell(
-                      onTap: _commitEdit,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 4),
-                        child: Icon(
-                          Icons.check,
-                          size: 14,
-                          color: AppColors.success,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Tooltip(
-                    message: 'Cancel (Escape)',
-                    child: InkWell(
-                      onTap: _cancelEditing,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 4),
-                        child: Icon(
-                          Icons.close,
-                          size: 14,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            onSubmitted: (_) => _commitEdit(),
-          ),
-        ),
-        if (_editError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2, left: 2),
-            child: Text(
-              _editError!,
-              style: const TextStyle(color: AppColors.error, fontSize: 10),
-            ),
-          ),
-      ],
+    return LazyInlineEditor(
+      controller: _editController,
+      focusNode: _editFocus,
+      errorText: _editError,
+      onCommit: _commitEdit,
+      onCancel: _cancelEditing,
     );
   }
 
@@ -862,73 +769,96 @@ class _LazyNodeState extends State<_LazyNode> {
   }
 
   Widget _buildChildrenWidget() {
-    final v = widget.value;
-    const virtualizationThreshold = 32;
+    return LazyNodeChildren(
+      value: widget.value,
+      sortEntries: _sortedEntries,
+      buildPath: _childPath,
+      buildChild: (keyName, value, path, isArrayIndex) => _childNode(
+        keyName: keyName,
+        value: value,
+        path: path,
+        isArrayIndex: isArrayIndex,
+      ),
+    );
+  }
 
-    if (v is Map<String, dynamic>) {
-      final entries = _sortedEntries(v);
-      if (entries.isEmpty) return const SizedBox.shrink();
-      if (entries.length <= virtualizationThreshold) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: entries
-              .map(
-                (e) => _childNode(
-                  keyName: e.key,
-                  value: e.value,
-                  path: _childPath(e.key, isIndex: false),
-                  isArrayIndex: false,
+  Widget _buildLeafNode(double indent, bool isHighlighted) {
+    return GestureDetector(
+      onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
+      onLongPressStart: (d) => _showContextMenu(context, d.globalPosition),
+      child: Focus(
+        onKeyEvent: _handleKeyEvent,
+        child: GestureDetector(
+          onTap: () => widget.onPathSelected?.call(widget.path),
+          onDoubleTap: widget.onValueChanged != null ? _startEditing : null,
+          child: AnimatedContainer(
+            key: isHighlighted ? widget.highlightedNodeKey : null,
+            duration: const Duration(milliseconds: 200),
+            color: isHighlighted
+                ? AppColors.primary.withValues(alpha: 0.12)
+                : Colors.transparent,
+            child: Padding(
+              padding: EdgeInsets.only(left: indent, top: 3, bottom: 3),
+              child: LazyLeafNodeContent(
+                isEditing: _isEditing,
+                typeIcon: _buildTypeIcon(widget.value),
+                keyWidget: _buildHighlightedText(
+                  '${widget.keyName}: ',
+                  widget.searchQuery,
+                  _keyStyle(),
                 ),
-              )
-              .toList(),
-        );
-      }
-      return ListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: entries.length,
-        itemBuilder: (context, index) {
-          final e = entries[index];
-          return _childNode(
-            keyName: e.key,
-            value: e.value,
-            path: _childPath(e.key, isIndex: false),
-            isArrayIndex: false,
-          );
-        },
-      );
-    }
-
-    if (v is List) {
-      if (v.isEmpty) return const SizedBox.shrink();
-      if (v.length <= virtualizationThreshold) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: List.generate(
-            v.length,
-            (i) => _childNode(
-              keyName: '[$i]',
-              value: v[i],
-              path: _childPath('[$i]', isIndex: true),
-              isArrayIndex: true,
+                valueWidget: _buildValuePreview(),
+                inlineEditor: _buildInlineEditor(),
+                canEdit: widget.onValueChanged != null,
+                onEdit: _startEditing,
+                copyButton: _buildCopyButton(),
+              ),
             ),
           ),
-        );
-      }
-      return ListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: v.length,
-        itemBuilder: (context, index) => _childNode(
-          keyName: '[$index]',
-          value: v[index],
-          path: _childPath('[$index]', isIndex: true),
-          isArrayIndex: true,
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    return const SizedBox.shrink();
+  Widget _buildContainerNode(double indent, bool isHighlighted) {
+    return GestureDetector(
+      onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
+      onLongPressStart: (d) => _showContextMenu(context, d.globalPosition),
+      child: Focus(
+        onKeyEvent: _handleKeyEvent,
+        child: AnimatedContainer(
+          key: isHighlighted ? widget.highlightedNodeKey : null,
+          duration: const Duration(milliseconds: 200),
+          color: isHighlighted
+              ? AppColors.primary.withValues(alpha: 0.08)
+              : Colors.transparent,
+          child: Padding(
+            padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LazyContainerNodeHeader(
+                  expanded: _expanded,
+                  typeIcon: _buildTypeIcon(widget.value),
+                  keyWidget: _buildHighlightedText(
+                    '${widget.keyName}: ',
+                    widget.searchQuery,
+                    _keyStyle(),
+                  ),
+                  valueWidget: _buildValuePreview(),
+                  onTap: () {
+                    setState(() => _expanded = !_expanded);
+                    widget.onPathSelected?.call(widget.path);
+                  },
+                  copyButton: _buildCopyButton(),
+                ),
+                if (_expanded) _buildChildrenWidget(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -949,137 +879,11 @@ class _LazyNodeState extends State<_LazyNode> {
 
     // ----- Leaf node -----
     if (!isContainer) {
-      return GestureDetector(
-        onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
-        onLongPressStart: (d) => _showContextMenu(context, d.globalPosition),
-        child: Focus(
-          onKeyEvent: _handleKeyEvent,
-          child: GestureDetector(
-            onTap: () => widget.onPathSelected?.call(widget.path),
-            onDoubleTap: widget.onValueChanged != null ? _startEditing : null,
-            child: AnimatedContainer(
-              key: isHighlighted ? widget.highlightedNodeKey : null,
-              duration: const Duration(milliseconds: 200),
-              color: isHighlighted
-                  ? AppColors.primary.withValues(alpha: 0.12)
-                  : Colors.transparent,
-              child: Padding(
-                padding: EdgeInsets.only(left: indent, top: 3, bottom: 3),
-                child: _isEditing
-                    ? Row(
-                        children: [
-                          _buildTypeIcon(widget.value),
-                          Flexible(
-                            child: _buildHighlightedText(
-                              '${widget.keyName}: ',
-                              widget.searchQuery,
-                              _keyStyle(),
-                            ),
-                          ),
-                          const SizedBox(width: AppDimensions.paddingS),
-                          Expanded(child: _buildInlineEditor()),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          _buildTypeIcon(widget.value),
-                          Flexible(
-                            child: _buildHighlightedText(
-                              '${widget.keyName}: ',
-                              widget.searchQuery,
-                              _keyStyle(),
-                            ),
-                          ),
-                          const SizedBox(width: AppDimensions.paddingS),
-                          Expanded(child: _buildValuePreview()),
-                          if (widget.onValueChanged != null)
-                            Tooltip(
-                              message: 'Edit value (double-click)',
-                              child: InkWell(
-                                onTap: _startEditing,
-                                borderRadius: BorderRadius.circular(
-                                  AppDimensions.radiusS,
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  child: Icon(
-                                    Icons.edit,
-                                    size: 11,
-                                    color: AppColors.textMuted,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          _buildCopyButton(),
-                        ],
-                      ),
-              ),
-            ),
-          ),
-        ),
-      );
+      return _buildLeafNode(indent, isHighlighted);
     }
 
     // ----- Container node (Map or List) -----
-    return GestureDetector(
-      onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
-      onLongPressStart: (d) => _showContextMenu(context, d.globalPosition),
-      child: Focus(
-        onKeyEvent: _handleKeyEvent,
-        child: AnimatedContainer(
-          key: isHighlighted ? widget.highlightedNodeKey : null,
-          duration: const Duration(milliseconds: 200),
-          color: isHighlighted
-              ? AppColors.primary.withValues(alpha: 0.08)
-              : Colors.transparent,
-          child: Padding(
-            padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header row — tap toggles expansion and reports path.
-                InkWell(
-                  onTap: () {
-                    setState(() => _expanded = !_expanded);
-                    widget.onPathSelected?.call(widget.path);
-                  },
-                  borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _expanded ? Icons.expand_more : Icons.chevron_right,
-                          size: AppDimensions.iconSizeS,
-                          color: AppColors.textSecondary,
-                        ),
-                        const SizedBox(width: 2),
-                        _buildTypeIcon(widget.value),
-                        Flexible(
-                          child: _buildHighlightedText(
-                            '${widget.keyName}: ',
-                            widget.searchQuery,
-                            _keyStyle(),
-                          ),
-                        ),
-                        const SizedBox(width: AppDimensions.paddingS),
-                        Expanded(child: _buildValuePreview()),
-                        _buildCopyButton(),
-                      ],
-                    ),
-                  ),
-                ),
-                // Children — built lazily, only when expanded.
-                if (_expanded) _buildChildrenWidget(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    return _buildContainerNode(indent, isHighlighted);
   }
 }
 
