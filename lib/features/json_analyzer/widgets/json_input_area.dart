@@ -9,6 +9,7 @@ import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/performance_constants.dart';
 import '../providers/json_analyzer_provider.dart';
+import 'json_find_replace_bar.dart';
 
 /// Input area widget for entering JSON text.
 ///
@@ -24,24 +25,55 @@ class JsonInputArea extends ConsumerStatefulWidget {
 class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   late final TextEditingController _controller;
   late final ScrollController _scrollController;
+  late final ScrollController _lineNumberScrollController;
   late final FocusNode _focusNode;
+  late final UndoHistoryController _undoController;
   Timer? _debounceTimer;
+  bool _showFindReplace = false;
+  int _lineCount = 1;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
     _scrollController = ScrollController();
+    _lineNumberScrollController = ScrollController();
     _focusNode = FocusNode();
+    _undoController = UndoHistoryController();
+    _controller.addListener(_onControllerChanged);
+    _scrollController.addListener(_syncLineNumbers);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
+    _scrollController.removeListener(_syncLineNumbers);
     _controller.dispose();
     _scrollController.dispose();
+    _lineNumberScrollController.dispose();
     _focusNode.dispose();
+    _undoController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  void _onControllerChanged() {
+    final count = '\n'.allMatches(_controller.text).length + 1;
+    if (count != _lineCount) {
+      setState(() => _lineCount = count);
+    }
+  }
+
+  /// Keeps the line-number gutter in sync with the editor's vertical scroll.
+  void _syncLineNumbers() {
+    if (!_lineNumberScrollController.hasClients) return;
+    final offset = _scrollController.offset.clamp(
+      0.0,
+      _lineNumberScrollController.position.maxScrollExtent,
+    );
+    if (_lineNumberScrollController.offset != offset) {
+      _lineNumberScrollController.jumpTo(offset);
+    }
   }
 
   void _onTextChanged(String value) {
@@ -89,6 +121,12 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHeader(isReadOnlyMode: isReadOnlyMode, inputSize: inputSize),
+          if (_showFindReplace && !isReadOnlyMode)
+            JsonFindReplaceBar(
+              controller: _controller,
+              onTextReplaced: _applyReplacedText,
+              onClose: () => setState(() => _showFindReplace = false),
+            ),
           const Divider(height: 1),
           Expanded(
             child: isReadOnlyMode ? _buildReadOnlyView() : _buildTextField(),
@@ -127,6 +165,24 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
             ),
           ),
           const Spacer(),
+          // Undo / Redo buttons
+          if (!isReadOnlyMode) _buildUndoRedoButtons(),
+          // Find & Replace toggle
+          if (!isReadOnlyMode)
+            IconButton(
+              tooltip: 'Find & Replace',
+              icon: Icon(
+                Icons.find_replace,
+                size: AppDimensions.iconSizeS,
+                color: _showFindReplace
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
+              ),
+              onPressed: () =>
+                  setState(() => _showFindReplace = !_showFindReplace),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            ),
           // Show read-only badge for large files
           if (isReadOnlyMode) _buildReadOnlyBadge(),
         ],
@@ -167,17 +223,30 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   Widget _buildReadOnlyView() {
     return Stack(
       children: [
-        SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(AppDimensions.paddingM),
-          child: SelectableText(
-            _controller.text,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: AppDimensions.fontSizeM,
-              color: AppColors.textPrimary,
-              height: 1.5,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildLineNumberGutter(),
+            const VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: AppColors.border,
             ),
-          ),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(AppDimensions.paddingM),
+                child: SelectableText(
+                  _controller.text,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: AppDimensions.fontSizeM,
+                    color: AppColors.textPrimary,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
         // Info banner at bottom
         Positioned(
@@ -225,29 +294,119 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   }
 
   Widget _buildTextField() {
-    return TextField(
-      controller: _controller,
-      scrollController: _scrollController,
-      focusNode: _focusNode,
-      onChanged: _onTextChanged,
-      maxLines: null,
-      expands: true,
-      textAlignVertical: TextAlignVertical.top,
-      style: GoogleFonts.jetBrainsMono(
-        fontSize: AppDimensions.fontSizeM,
-        color: AppColors.textPrimary,
-        height: 1.5,
-      ),
-      decoration: InputDecoration(
-        hintText: AppStrings.inputHint,
-        hintStyle: GoogleFonts.jetBrainsMono(
-          fontSize: AppDimensions.fontSizeM,
-          color: AppColors.textMuted,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildLineNumberGutter(),
+        const VerticalDivider(width: 1, thickness: 1, color: AppColors.border),
+        Expanded(
+          child: TextField(
+            controller: _controller,
+            scrollController: _scrollController,
+            focusNode: _focusNode,
+            undoController: _undoController,
+            onChanged: _onTextChanged,
+            maxLines: null,
+            expands: true,
+            textAlignVertical: TextAlignVertical.top,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: AppDimensions.fontSizeM,
+              color: AppColors.textPrimary,
+              height: 1.5,
+            ),
+            decoration: InputDecoration(
+              hintText: AppStrings.inputHint,
+              hintStyle: GoogleFonts.jetBrainsMono(
+                fontSize: AppDimensions.fontSizeM,
+                color: AppColors.textMuted,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.all(AppDimensions.paddingM),
+            ),
+            cursorColor: AppColors.primary,
+          ),
         ),
-        border: InputBorder.none,
-        contentPadding: const EdgeInsets.all(AppDimensions.paddingM),
-      ),
-      cursorColor: AppColors.primary,
+      ],
     );
+  }
+
+  /// Gutter widget showing 1-based line numbers, scrolled in sync with the editor.
+  Widget _buildLineNumberGutter() {
+    // Each line occupies exactly fontSize * lineHeight pixels.
+    const lineHeight = AppDimensions.fontSizeM * 1.5;
+
+    return Container(
+      width: AppDimensions.lineNumberWidth,
+      color: AppColors.surface,
+      child: SingleChildScrollView(
+        controller: _lineNumberScrollController,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.only(
+            top: AppDimensions.paddingM,
+            bottom: AppDimensions.paddingM,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(
+              _lineCount,
+              (i) => SizedBox(
+                height: lineHeight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: AppDimensions.paddingS),
+                  child: Text(
+                    '${i + 1}',
+                    textAlign: TextAlign.right,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: AppDimensions.fontSizeM,
+                      color: AppColors.textMuted,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Undo / Redo icon buttons driven by [UndoHistoryController].
+  Widget _buildUndoRedoButtons() {
+    return ValueListenableBuilder<UndoHistoryValue>(
+      valueListenable: _undoController,
+      builder: (context, value, _) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Undo',
+            icon: const Icon(Icons.undo, size: AppDimensions.iconSizeS),
+            color: AppColors.textSecondary,
+            disabledColor: AppColors.textMuted,
+            onPressed: value.canUndo ? _undoController.undo : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          ),
+          IconButton(
+            tooltip: 'Redo',
+            icon: const Icon(Icons.redo, size: AppDimensions.iconSizeS),
+            color: AppColors.textSecondary,
+            disabledColor: AppColors.textMuted,
+            onPressed: value.canRedo ? _undoController.redo : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Immediately pushes [newText] to the provider (no debounce).
+  ///
+  /// Used by Find & Replace for deliberate one-shot replacements.
+  void _applyReplacedText(String newText) {
+    _debounceTimer?.cancel();
+    ref.read(jsonAnalyzerProvider.notifier).updateInput(newText);
   }
 }
