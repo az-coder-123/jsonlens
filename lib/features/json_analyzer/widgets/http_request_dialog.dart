@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -38,6 +39,7 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
 
   bool _isFetching = false;
   bool _showCurlInput = false;
+  bool _showCurlOutput = false;
   String? _curlError;
 
   /// Non-null after a successful fetch — holds the raw JSON string to preview.
@@ -119,6 +121,40 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
     });
   }
 
+  // Builds a cURL command string from the current dialog inputs.
+  String _buildCurlCommand() {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return '';
+
+    final buf = StringBuffer('curl');
+
+    if (_method != 'GET') {
+      buf.write(' -X $_method');
+    }
+
+    buf.write(' ${_shellEscape(url)}');
+
+    for (final row in _headers) {
+      final k = row.keyController.text.trim();
+      final v = row.valueController.text.trim();
+      if (k.isNotEmpty) {
+        buf.write(' \\\n  -H ${_shellEscape('$k: $v')}');
+      }
+    }
+
+    if (JsonFetcher.methodHasBody(_method)) {
+      final body = _bodyController.text.trim();
+      if (body.isNotEmpty) {
+        buf.write(' \\\n  -d ${_shellEscape(body)}');
+      }
+    }
+
+    return buf.toString();
+  }
+
+  /// Wraps [s] in single quotes and escapes embedded single quotes.
+  String _shellEscape(String s) => "'${s.replaceAll("'", "'\\''")}'";
+
   // Parses the pasted cURL command and populates all request fields.
   void _applyCurl() {
     final raw = _curlController.text.trim();
@@ -153,6 +189,7 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
       setState(() {
         _method = validMethod;
         _showCurlInput = false;
+        _showCurlOutput = false;
         _curlError = null;
         // Reset previous results.
         _previewJson = null;
@@ -191,6 +228,12 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_showCurlOutput) ...[
+                      _buildCurlOutputSection(),
+                      const SizedBox(height: AppDimensions.paddingM),
+                      const Divider(color: AppColors.border, height: 1),
+                      const SizedBox(height: AppDimensions.paddingM),
+                    ],
                     if (_showCurlInput) ...[
                       _buildCurlSection(),
                       const SizedBox(height: AppDimensions.paddingM),
@@ -249,7 +292,33 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
           const Spacer(),
           TextButton.icon(
             onPressed: () => setState(() {
+              _showCurlOutput = !_showCurlOutput;
+              _showCurlInput = false;
+              _curlError = null;
+            }),
+            icon: Icon(
+              Icons.code,
+              size: AppDimensions.iconSizeS,
+              color: _showCurlOutput
+                  ? AppColors.primary
+                  : AppColors.textSecondary,
+            ),
+            label: Text(
+              'Export cURL',
+              style: TextStyle(
+                fontSize: AppDimensions.fontSizeS,
+                color: _showCurlOutput
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
+              ),
+            ),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+          ),
+          const SizedBox(width: AppDimensions.paddingXS),
+          TextButton.icon(
+            onPressed: () => setState(() {
               _showCurlInput = !_showCurlInput;
+              _showCurlOutput = false;
               _curlError = null;
             }),
             icon: Icon(
@@ -279,6 +348,86 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCurlOutputSection() {
+    final curl = _buildCurlCommand();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.code,
+              size: AppDimensions.iconSizeS,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: AppDimensions.paddingXS),
+            const Text(
+              'Generated cURL command',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: AppDimensions.fontSizeS,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: curl.isEmpty
+                  ? null
+                  : () async {
+                      await Clipboard.setData(ClipboardData(text: curl));
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('cURL command copied to clipboard'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+              icon: const Icon(Icons.copy, size: AppDimensions.iconSizeS),
+              label: const Text('Copy'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppDimensions.paddingXS),
+        if (curl.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              vertical: AppDimensions.paddingXS,
+            ),
+            child: Text(
+              'Enter a URL above to generate a cURL command.',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: AppDimensions.fontSizeS,
+              ),
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(AppDimensions.paddingM),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: SelectableText(
+              curl,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: AppDimensions.fontSizeS,
+                color: AppColors.textPrimary,
+                height: 1.6,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
