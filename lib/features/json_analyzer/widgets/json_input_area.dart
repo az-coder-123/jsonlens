@@ -1025,14 +1025,78 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(AppDimensions.paddingM),
-      ),
-    );
+
+    // Auto-detect intent from message content
+    final lower = msg.toLowerCase();
+    final isError =
+        lower.contains('fail') ||
+        lower.contains('error') ||
+        lower.contains('invalid');
+    final isWarning =
+        lower.contains('cancel') ||
+        lower.contains('empty') ||
+        lower.contains('nothing');
+
+    final Color accent;
+    final Color bgColor;
+    final IconData iconData;
+    if (isError) {
+      accent = AppColors.error;
+      bgColor = const Color(0xFF2D1515); // dark red tint
+      iconData = Icons.error_outline;
+    } else if (isWarning) {
+      accent = AppColors.warning;
+      bgColor = const Color(0xFF2D1F10); // dark orange tint
+      iconData = Icons.warning_amber_outlined;
+    } else {
+      accent = AppColors.success;
+      bgColor = const Color(0xFF102D25); // dark green tint
+      iconData = Icons.check_circle_outline;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(AppDimensions.paddingM),
+          duration: Duration(seconds: isError ? 4 : 2),
+          content: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+              border: Border.all(color: accent.withValues(alpha: 0.4)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x44000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(iconData, size: 18, color: accent),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    msg,
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w500,
+                      fontSize: AppDimensions.fontSizeS,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
   }
 
   /// Immediately pushes [newText] to the provider (no debounce).
