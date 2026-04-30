@@ -41,12 +41,16 @@ class JsonFetchResult {
   /// Human-readable error description; non-null on any error.
   final String? error;
 
+  /// Response headers returned by the server. Empty on network-level errors.
+  final Map<String, String> responseHeaders;
+
   const JsonFetchResult._({
     required this.status,
     this.statusCode,
     this.body = '',
     this.data,
     this.error,
+    this.responseHeaders = const {},
   });
 
   bool get isOk => status == FetchStatus.ok;
@@ -75,6 +79,8 @@ class JsonFetcher {
       const {'POST', 'PUT', 'PATCH'}.contains(method.toUpperCase());
 
   /// Fetches [url] using [method] with optional [headers] and [body].
+  ///
+  /// Set [followRedirects] to `false` to treat 3xx responses as errors.
   /// Parses and validates the response as JSON.
   static Future<JsonFetchResult> fetch({
     required String url,
@@ -82,6 +88,7 @@ class JsonFetcher {
     Map<String, String> headers = const {},
     String body = '',
     Duration timeout = _defaultTimeout,
+    bool followRedirects = true,
   }) async {
     final Uri uri;
     try {
@@ -100,25 +107,26 @@ class JsonFetcher {
     }
 
     final effectiveHeaders = {'Accept': 'application/json', ...headers};
+    final client = http.Client();
 
     try {
-      final http.Response response;
       final upper = method.toUpperCase();
+      final request = http.Request(upper, uri)
+        ..followRedirects = followRedirects
+        ..maxRedirects = followRedirects ? 5 : 0
+        ..headers.addAll(effectiveHeaders);
 
-      response = await switch (upper) {
-        'POST' => http.post(uri, headers: effectiveHeaders, body: body),
-        'PUT' => http.put(uri, headers: effectiveHeaders, body: body),
-        'PATCH' => http.patch(uri, headers: effectiveHeaders, body: body),
-        'DELETE' => http.delete(uri, headers: effectiveHeaders),
-        'HEAD' => http.head(uri, headers: effectiveHeaders),
-        _ => http.get(uri, headers: effectiveHeaders), // GET, OPTIONS, fallback
-      }.timeout(timeout);
+      if (methodHasBody(upper) && body.isNotEmpty) request.body = body;
+
+      final streamed = await client.send(request).timeout(timeout);
+      final response = await http.Response.fromStream(streamed);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return JsonFetchResult._(
           status: FetchStatus.httpError,
           statusCode: response.statusCode,
           body: response.body,
+          responseHeaders: response.headers,
           error: 'Server returned HTTP ${response.statusCode}',
         );
       }
@@ -134,6 +142,7 @@ class JsonFetcher {
           status: FetchStatus.invalidJson,
           statusCode: response.statusCode,
           body: responseBody,
+          responseHeaders: response.headers,
           error: 'Response is not valid JSON: ${e.message}',
         );
       }
@@ -143,6 +152,7 @@ class JsonFetcher {
         statusCode: response.statusCode,
         body: responseBody,
         data: parsed,
+        responseHeaders: response.headers,
       );
     } on TimeoutException {
       return const JsonFetchResult._(
@@ -164,6 +174,8 @@ class JsonFetcher {
         status: FetchStatus.networkError,
         error: 'Unexpected error: $e',
       );
+    } finally {
+      client.close();
     }
   }
 

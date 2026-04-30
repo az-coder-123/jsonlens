@@ -9,6 +9,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/utils/curl_parser.dart';
 import '../../../core/utils/json_fetcher.dart';
+import '../models/http_request_entry.dart';
+import '../providers/http_request_history_provider.dart';
 import '../providers/json_analyzer_provider.dart';
 
 /// Dialog that fetches JSON from an HTTP URL and loads it into the editor.
@@ -50,12 +52,36 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
 
   int? _responseStatusCode;
 
+  // ── New feature state ──────────────────────────────────────────────────────
+
+  /// Response headers from the most recent fetch.
+  Map<String, String>? _responseHeaders;
+  bool _showResponseHeaders = false;
+
+  /// Whether to display the history/saved panel.
+  bool _showHistory = false;
+
+  /// Whether to show the auth quick-fill panel.
+  bool _showAuth = false;
+  String _authType = 'none'; // 'none' | 'bearer' | 'basic'
+  final _authTokenController = TextEditingController();
+  final _authUserController = TextEditingController();
+  final _authPassController = TextEditingController();
+
+  /// Whether to display the advanced settings panel.
+  bool _showAdvanced = false;
+  Duration _timeout = const Duration(seconds: 15);
+  bool _followRedirects = true;
+
   @override
   void dispose() {
     _urlController.dispose();
     _bodyController.dispose();
     _curlController.dispose();
     _urlFocus.dispose();
+    _authTokenController.dispose();
+    _authUserController.dispose();
+    _authPassController.dispose();
     for (final h in _headers) {
       h.dispose();
     }
@@ -72,6 +98,8 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
       _previewJson = null;
       _errorMessage = null;
       _responseStatusCode = null;
+      _responseHeaders = null;
+      _showResponseHeaders = false;
     });
 
     final url = _urlController.text.trim();
@@ -87,21 +115,36 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
       method: _method,
       headers: headers,
       body: JsonFetcher.methodHasBody(_method) ? _bodyController.text : '',
+      timeout: _timeout,
+      followRedirects: _followRedirects,
     );
 
     if (!mounted) return;
     setState(() {
       _isFetching = false;
       _responseStatusCode = result.statusCode;
+      _responseHeaders = result.responseHeaders.isEmpty
+          ? null
+          : result.responseHeaders;
       if (result.isOk) {
-        // Pretty-print for preview.
         _previewJson = const JsonEncoder.withIndent('  ').convert(result.data);
         _errorMessage = null;
+        _saveToHistory(url, headers);
       } else {
         _previewJson = null;
         _errorMessage = result.error;
       }
     });
+  }
+
+  void _saveToHistory(String url, Map<String, String> headers) {
+    final entry = HttpRequestEntry.create(
+      url: url,
+      method: _method,
+      headers: headers,
+      body: _bodyController.text,
+    );
+    ref.read(httpRequestHistoryProvider.notifier).addToHistory(entry);
   }
 
   void _loadIntoEditor() {
@@ -163,7 +206,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
     try {
       final cmd = CurlParser.parse(raw);
 
-      // Populate URL & method.
       _urlController.text = cmd.url;
 
       final upperMethod = cmd.method.toUpperCase();
@@ -171,7 +213,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
           ? upperMethod
           : 'GET';
 
-      // Replace existing headers with parsed ones.
       for (final h in _headers) {
         h.dispose();
       }
@@ -183,7 +224,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
         _headers.add(row);
       }
 
-      // Populate body.
       _bodyController.text = cmd.body;
 
       setState(() {
@@ -191,7 +231,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
         _showCurlInput = false;
         _showCurlOutput = false;
         _curlError = null;
-        // Reset previous results.
         _previewJson = null;
         _errorMessage = null;
         _responseStatusCode = null;
@@ -201,6 +240,141 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
     } on FormatException catch (e) {
       setState(() => _curlError = e.message);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auth helpers
+  // ---------------------------------------------------------------------------
+
+  /// Builds the Authorization header value for the current auth type and
+  /// inserts or updates it in [_headers].
+  void _applyAuth() {
+    String? headerValue;
+    if (_authType == 'bearer') {
+      final token = _authTokenController.text.trim();
+      if (token.isEmpty) return;
+      headerValue = 'Bearer $token';
+    } else if (_authType == 'basic') {
+      final user = _authUserController.text.trim();
+      final pass = _authPassController.text;
+      final encoded = base64Encode(utf8.encode('$user:$pass'));
+      headerValue = 'Basic $encoded';
+    }
+    if (headerValue == null) return;
+
+    // Update existing Authorization header or add a new row.
+    final existing = _headers.where(
+      (h) => h.keyController.text.trim().toLowerCase() == 'authorization',
+    );
+    if (existing.isNotEmpty) {
+      existing.first.valueController.text = headerValue;
+    } else {
+      final row = _HeaderRow();
+      row.keyController.text = 'Authorization';
+      row.valueController.text = headerValue;
+      _headers.add(row);
+    }
+    setState(() => _showAuth = false);
+  }
+
+  // ---------------------------------------------------------------------------
+  // History helpers
+  // ---------------------------------------------------------------------------
+
+  /// Restores all fields from a history/saved [entry].
+  void _restoreEntry(HttpRequestEntry entry) {
+    _urlController.text = entry.url;
+    for (final h in _headers) {
+      h.dispose();
+    }
+    _headers.clear();
+    for (final e in entry.headers.entries) {
+      final row = _HeaderRow();
+      row.keyController.text = e.key;
+      row.valueController.text = e.value;
+      _headers.add(row);
+    }
+    _bodyController.text = entry.body;
+    setState(() {
+      _method = entry.method;
+      _showHistory = false;
+      _previewJson = null;
+      _errorMessage = null;
+      _responseStatusCode = null;
+      _responseHeaders = null;
+    });
+  }
+
+  /// Opens a dialog to name [entry] and saves it.
+  Future<void> _promptSaveEntry(HttpRequestEntry entry) async {
+    final name = await _showNameDialog(context, initial: entry.name ?? '');
+    if (name == null || name.trim().isEmpty) return;
+    if (!mounted) return;
+    await ref
+        .read(httpRequestHistoryProvider.notifier)
+        .saveRequest(entry, name.trim());
+  }
+
+  static Future<String?> _showNameDialog(
+    BuildContext ctx, {
+    String initial = '',
+  }) {
+    final ctrl = TextEditingController(text: initial);
+    return showDialog<String>(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        title: const Text(
+          'Save request',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: AppDimensions.fontSizeL,
+          ),
+        ),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: AppDimensions.fontSizeM,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Enter a name…',
+            hintStyle: const TextStyle(color: AppColors.textMuted),
+            filled: true,
+            fillColor: AppColors.surfaceVariant,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(ctrl.text),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.buttonPrimary,
+              foregroundColor: AppColors.textPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              ),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -240,9 +414,23 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                       const Divider(color: AppColors.border, height: 1),
                       const SizedBox(height: AppDimensions.paddingM),
                     ],
+                    if (_showHistory) ...[
+                      _buildHistoryPanel(),
+                      const SizedBox(height: AppDimensions.paddingM),
+                      const Divider(color: AppColors.border, height: 1),
+                      const SizedBox(height: AppDimensions.paddingM),
+                    ],
                     _buildUrlRow(),
                     const SizedBox(height: AppDimensions.paddingM),
+                    if (_showAuth) ...[
+                      _buildAuthSection(),
+                      const SizedBox(height: AppDimensions.paddingM),
+                    ],
                     _buildHeadersSection(),
+                    if (_showAdvanced) ...[
+                      const SizedBox(height: AppDimensions.paddingM),
+                      _buildAdvancedSection(),
+                    ],
                     if (JsonFetcher.methodHasBody(_method)) ...[
                       const SizedBox(height: AppDimensions.paddingM),
                       _buildBodySection(),
@@ -254,6 +442,10 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                     if (_previewJson != null) ...[
                       const SizedBox(height: AppDimensions.paddingM),
                       _buildPreviewSection(_previewJson!),
+                    ],
+                    if (_responseHeaders != null) ...[
+                      const SizedBox(height: AppDimensions.paddingM),
+                      _buildResponseHeadersSection(_responseHeaders!),
                     ],
                   ],
                 ),
@@ -290,6 +482,29 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
             ),
           ),
           const Spacer(),
+          TextButton.icon(
+            onPressed: () => setState(() {
+              _showHistory = !_showHistory;
+              _showCurlInput = false;
+              _showCurlOutput = false;
+            }),
+            icon: Icon(
+              Icons.history,
+              size: AppDimensions.iconSizeS,
+              color: _showHistory ? AppColors.primary : AppColors.textSecondary,
+            ),
+            label: Text(
+              'History',
+              style: TextStyle(
+                fontSize: AppDimensions.fontSizeS,
+                color: _showHistory
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
+              ),
+            ),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+          ),
+          const SizedBox(width: AppDimensions.paddingXS),
           TextButton.icon(
             onPressed: () => setState(() {
               _showCurlOutput = !_showCurlOutput;
@@ -498,62 +713,131 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
   }
 
   Widget _buildUrlRow() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Method selector
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
-            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-            border: Border.all(color: AppColors.border),
-          ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppDimensions.paddingS,
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _method,
-              dropdownColor: AppColors.surface,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: AppDimensions.fontSizeS,
-                color: _methodColor(_method),
-                fontWeight: FontWeight.w700,
+        Row(
+          children: [
+            // Method selector
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                border: Border.all(color: AppColors.border),
               ),
-              items: JsonFetcher.supportedMethods
-                  .map(
-                    (m) => DropdownMenuItem(
-                      value: m,
-                      child: Text(
-                        m,
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: AppDimensions.fontSizeS,
-                          color: _methodColor(m),
-                          fontWeight: FontWeight.w700,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingS,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _method,
+                  dropdownColor: AppColors.surface,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: AppDimensions.fontSizeS,
+                    color: _methodColor(_method),
+                    fontWeight: FontWeight.w700,
+                  ),
+                  items: JsonFetcher.supportedMethods
+                      .map(
+                        (m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(
+                            m,
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: AppDimensions.fontSizeS,
+                              color: _methodColor(m),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _method = v ?? 'GET'),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _method = v ?? 'GET'),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: AppDimensions.paddingS),
+            // URL field
+            Expanded(
+              child: TextField(
+                controller: _urlController,
+                focusNode: _urlFocus,
+                autofocus: true,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: AppDimensions.fontSizeS,
+                  color: AppColors.textPrimary,
+                ),
+                decoration: _fieldDecoration(
+                  'https://example.com/api/data.json',
+                ),
+                onSubmitted: (_) => _isFetching ? null : _fetch(),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: AppDimensions.paddingS),
-        // URL field
-        Expanded(
-          child: TextField(
-            controller: _urlController,
-            focusNode: _urlFocus,
-            autofocus: true,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: AppDimensions.fontSizeS,
-              color: AppColors.textPrimary,
+        const SizedBox(height: 6),
+        // Quick-access row: Auth + Advanced toggles.
+        Row(
+          children: [
+            _buildQuickToggle(
+              icon: Icons.lock_outline,
+              label: 'Auth',
+              active: _showAuth,
+              onTap: () => setState(() => _showAuth = !_showAuth),
             ),
-            decoration: _fieldDecoration('https://example.com/api/data.json'),
-            onSubmitted: (_) => _isFetching ? null : _fetch(),
-          ),
+            const SizedBox(width: 8),
+            _buildQuickToggle(
+              icon: Icons.tune,
+              label: 'Advanced',
+              active: _showAdvanced,
+              onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+            ),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _buildQuickToggle({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.primary.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+          border: Border.all(
+            color: active ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 12,
+              color: active ? AppColors.primary : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: active ? AppColors.primary : AppColors.textSecondary,
+                fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -664,6 +948,469 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
           ),
           decoration: _fieldDecoration('{ "key": "value" }'),
         ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // History panel
+  // ---------------------------------------------------------------------------
+
+  Widget _buildHistoryPanel() {
+    final histState = ref.watch(httpRequestHistoryProvider);
+    final hasContent =
+        histState.history.isNotEmpty || histState.saved.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.history,
+              size: AppDimensions.iconSizeS,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: AppDimensions.paddingXS),
+            const Text(
+              'History & Saved',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: AppDimensions.fontSizeS,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            if (histState.history.isNotEmpty)
+              TextButton(
+                onPressed: () async {
+                  await ref
+                      .read(httpRequestHistoryProvider.notifier)
+                      .clearHistory();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                ),
+                child: const Text(
+                  'Clear history',
+                  style: TextStyle(fontSize: AppDimensions.fontSizeS),
+                ),
+              ),
+          ],
+        ),
+        if (!hasContent)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              vertical: AppDimensions.paddingS,
+            ),
+            child: Text(
+              'No requests yet. Successful fetches are saved automatically.',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: AppDimensions.fontSizeS,
+              ),
+            ),
+          )
+        else ...[
+          if (histState.saved.isNotEmpty) ...[
+            const SizedBox(height: AppDimensions.paddingXS),
+            _buildHistoryGroup('Saved', histState.saved, isSaved: true),
+          ],
+          if (histState.history.isNotEmpty) ...[
+            const SizedBox(height: AppDimensions.paddingXS),
+            _buildHistoryGroup('Recent', histState.history, isSaved: false),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildHistoryGroup(
+    String label,
+    List<HttpRequestEntry> entries, {
+    required bool isSaved,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        ...entries.map((e) => _buildHistoryRow(e, isSaved: isSaved)),
+      ],
+    );
+  }
+
+  Widget _buildHistoryRow(HttpRequestEntry entry, {required bool isSaved}) {
+    return InkWell(
+      onTap: () => _restoreEntry(entry),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: _methodColor(entry.method).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                entry.method,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  color: _methodColor(entry.method),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (entry.name != null)
+                    Text(
+                      entry.name!,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: AppDimensions.fontSizeS,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  Text(
+                    entry.url,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            // Save / rename button (star for history, edit for saved).
+            IconButton(
+              icon: Icon(
+                isSaved ? Icons.edit_outlined : Icons.star_border,
+                size: 15,
+                color: AppColors.textMuted,
+              ),
+              tooltip: isSaved ? 'Rename' : 'Save',
+              onPressed: () => _promptSaveEntry(entry),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            ),
+            // Delete button.
+            IconButton(
+              icon: const Icon(
+                Icons.close,
+                size: 14,
+                color: AppColors.textMuted,
+              ),
+              tooltip: 'Remove',
+              onPressed: () async {
+                if (isSaved) {
+                  await ref
+                      .read(httpRequestHistoryProvider.notifier)
+                      .deleteSaved(entry.id);
+                } else {
+                  await ref
+                      .read(httpRequestHistoryProvider.notifier)
+                      .deleteHistory(entry.id);
+                }
+              },
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auth section
+  // ---------------------------------------------------------------------------
+
+  Widget _buildAuthSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.lock_outline,
+              size: AppDimensions.iconSizeS,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: AppDimensions.paddingXS),
+            const Text(
+              'Auth',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: AppDimensions.fontSizeS,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: AppDimensions.paddingM),
+            _buildAuthTypeChip('none', 'No Auth'),
+            const SizedBox(width: 6),
+            _buildAuthTypeChip('bearer', 'Bearer Token'),
+            const SizedBox(width: 6),
+            _buildAuthTypeChip('basic', 'Basic Auth'),
+          ],
+        ),
+        if (_authType == 'bearer') ...[
+          const SizedBox(height: AppDimensions.paddingS),
+          TextField(
+            controller: _authTokenController,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: AppDimensions.fontSizeS,
+              color: AppColors.textPrimary,
+            ),
+            decoration: _fieldDecoration('Token'),
+          ),
+        ],
+        if (_authType == 'basic') ...[
+          const SizedBox(height: AppDimensions.paddingS),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _authUserController,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: AppDimensions.fontSizeS,
+                    color: AppColors.textPrimary,
+                  ),
+                  decoration: _fieldDecoration('Username'),
+                ),
+              ),
+              const SizedBox(width: AppDimensions.paddingS),
+              Expanded(
+                child: TextField(
+                  controller: _authPassController,
+                  obscureText: true,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: AppDimensions.fontSizeS,
+                    color: AppColors.textPrimary,
+                  ),
+                  decoration: _fieldDecoration('Password'),
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (_authType != 'none') ...[
+          const SizedBox(height: AppDimensions.paddingS),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              onPressed: _applyAuth,
+              icon: const Icon(Icons.check, size: AppDimensions.iconSizeS),
+              label: const Text('Apply to headers'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.buttonPrimary,
+                foregroundColor: AppColors.textPrimary,
+                visualDensity: VisualDensity.compact,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAuthTypeChip(String value, String label) {
+    final selected = _authType == value;
+    return GestureDetector(
+      onTap: () => setState(() => _authType = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.18)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: selected ? AppColors.primary : AppColors.textSecondary,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Advanced section (timeout + follow redirects)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildAdvancedSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Advanced',
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: AppDimensions.fontSizeS,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: AppDimensions.paddingS),
+        Row(
+          children: [
+            const Text(
+              'Timeout',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: AppDimensions.fontSizeS,
+              ),
+            ),
+            const SizedBox(width: AppDimensions.paddingM),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                border: Border.all(color: AppColors.border),
+              ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingS,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: _timeout.inSeconds,
+                  dropdownColor: AppColors.surface,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: AppDimensions.fontSizeS,
+                    color: AppColors.textPrimary,
+                  ),
+                  items: const [5, 10, 15, 30, 60, 120].map((s) {
+                    return DropdownMenuItem(value: s, child: Text('${s}s'));
+                  }).toList(),
+                  onChanged: (s) =>
+                      setState(() => _timeout = Duration(seconds: s ?? 15)),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppDimensions.paddingL),
+            const Text(
+              'Follow redirects',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: AppDimensions.fontSizeS,
+              ),
+            ),
+            const SizedBox(width: AppDimensions.paddingS),
+            Switch(
+              value: _followRedirects,
+              onChanged: (v) => setState(() => _followRedirects = v),
+              activeThumbColor: AppColors.primary,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Response headers viewer
+  // ---------------------------------------------------------------------------
+
+  Widget _buildResponseHeadersSection(Map<String, String> headers) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () =>
+              setState(() => _showResponseHeaders = !_showResponseHeaders),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+          child: Row(
+            children: [
+              Icon(
+                _showResponseHeaders ? Icons.expand_less : Icons.expand_more,
+                size: AppDimensions.iconSizeS,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: AppDimensions.paddingXS),
+              Text(
+                'Response headers (${headers.length})',
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: AppDimensions.fontSizeS,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_showResponseHeaders) ...[
+          const SizedBox(height: AppDimensions.paddingXS),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: headers.entries.map((e) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.paddingM,
+                    vertical: 5,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          e.key,
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 11,
+                            color: AppColors.jsonKey,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 3,
+                        child: SelectableText(
+                          e.value,
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 11,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -792,6 +1539,8 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                 _previewJson = null;
                 _errorMessage = null;
                 _responseStatusCode = null;
+                _responseHeaders = null;
+                _showResponseHeaders = false;
               }),
               icon: const Icon(Icons.refresh, size: AppDimensions.iconSizeS),
               label: const Text('Re-fetch'),

@@ -945,11 +945,11 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     }
     if (value is Map) {
       final n = value.length;
-      return '{${n} ${n == 1 ? 'key' : 'keys'}}';
+      return '{$n ${n == 1 ? 'key' : 'keys'}}';
     }
     if (value is List) {
       final n = value.length;
-      return '[${n} ${n == 1 ? 'item' : 'items'}]';
+      return '[$n ${n == 1 ? 'item' : 'items'}]';
     }
     return value.toString();
   }
