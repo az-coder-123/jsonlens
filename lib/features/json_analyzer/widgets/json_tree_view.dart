@@ -18,6 +18,63 @@ import 'lazy_json_tree.dart';
 import 'processing_overlay.dart';
 import 'type_filter_bar.dart';
 
+// ---------------------------------------------------------------------------
+// Path-list search helpers
+// ---------------------------------------------------------------------------
+
+/// Returns `true` if [key] or the leaf [value] itself (not its children)
+/// directly matches [query] under [scope].
+bool _directMatch(String key, dynamic value, String query, SearchScope scope) {
+  if (query.isEmpty) return false;
+  final q = query.toLowerCase();
+  final checkKeys = scope != SearchScope.valuesOnly;
+  final checkValues = scope != SearchScope.keysOnly;
+  if (checkKeys && key.toLowerCase().contains(q)) return true;
+  // Only match the value directly (not its children).
+  if (checkValues && value is! Map && value is! List) {
+    return value.toString().toLowerCase().contains(q);
+  }
+  return false;
+}
+
+/// Recursively collects every JSON path where the node key or leaf value
+/// directly matches [query] under [scope].
+///
+/// [prefix] is the JSON-path string for [data] (default `'$'` for the root).
+List<String> _collectMatchingPaths(
+  dynamic data,
+  String query,
+  SearchScope scope, {
+  String prefix = r'$',
+}) {
+  if (query.isEmpty) return const [];
+  final results = <String>[];
+  if (data is Map<String, dynamic>) {
+    for (final entry in data.entries) {
+      final childPath = '$prefix.${entry.key}';
+      if (_directMatch(entry.key, entry.value, query, scope)) {
+        results.add(childPath);
+      }
+      results.addAll(
+        _collectMatchingPaths(entry.value, query, scope, prefix: childPath),
+      );
+    }
+  } else if (data is List) {
+    for (int i = 0; i < data.length; i++) {
+      final childPath = '$prefix[$i]';
+      if (_directMatch('[$i]', data[i], query, scope)) {
+        results.add(childPath);
+      }
+      results.addAll(
+        _collectMatchingPaths(data[i], query, scope, prefix: childPath),
+      );
+    }
+  }
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+
 /// Tree view widget for displaying JSON in an expandable/collapsible tree.
 class JsonTreeViewWidget extends ConsumerStatefulWidget {
   const JsonTreeViewWidget({super.key});
@@ -38,6 +95,10 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
 
   bool _isSearchVisible = false;
   bool _isFilterVisible = false;
+
+  /// When `true`, search results are shown as a flat path list instead of
+  /// the filtered tree.
+  bool _pathListMode = false;
 
   SearchScope _searchScope = SearchScope.both;
 
@@ -105,6 +166,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     setState(() {
       _searchQuery = '';
       _searchController.clear();
+      _pathListMode = false;
     });
   }
 
@@ -455,6 +517,15 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       }
     });
 
+    // Collect matching paths when path-list mode is active with a query.
+    final List<String>? pathResults =
+        (_isSearchVisible &&
+            _pathListMode &&
+            _searchQuery.isNotEmpty &&
+            parsedData != null)
+        ? _collectMatchingPaths(parsedData, _searchQuery, _searchScope)
+        : null;
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceVariant,
@@ -465,7 +536,8 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHeader(context),
-          if (_isSearchVisible) _buildSearchBar(),
+          if (_isSearchVisible)
+            _buildSearchBar(matchCount: pathResults?.length),
           if (_isFilterVisible) _buildFilterBar(),
           if (_selectedPath.isNotEmpty) _buildBreadcrumbBar(),
           const Divider(height: 1),
@@ -476,6 +548,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
                   parsedData: parsedData,
                   isValid: isValid,
                   isEmpty: isEmpty,
+                  pathResults: pathResults,
                 ),
                 if (isProcessing)
                   const ProcessingOverlay(message: 'Processing large JSON...'),
@@ -644,7 +717,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   // Search bar
   // -------------------------------------------------------------------------
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar({int? matchCount}) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingM,
@@ -683,6 +756,21 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
                   onChanged: (value) => setState(() => _searchQuery = value),
                 ),
               ),
+              // Match count badge (visible when path-list mode is on).
+              if (matchCount != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Text(
+                    '$matchCount',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 11,
+                      color: matchCount > 0
+                          ? AppColors.primary
+                          : AppColors.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               if (_searchQuery.isNotEmpty)
                 GestureDetector(
                   onTap: _clearSearch,
@@ -692,6 +780,25 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
                     color: AppColors.textSecondary,
                   ),
                 ),
+              const SizedBox(width: 4),
+              // Toggle between tree view and path-list results.
+              Tooltip(
+                message: _pathListMode
+                    ? 'Show tree view'
+                    : 'Show results as path list',
+                child: GestureDetector(
+                  onTap: () => setState(() => _pathListMode = !_pathListMode),
+                  child: Icon(
+                    _pathListMode
+                        ? Icons.account_tree
+                        : Icons.format_list_bulleted,
+                    size: AppDimensions.iconSizeS,
+                    color: _pathListMode
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -798,9 +905,13 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     required dynamic parsedData,
     required bool isValid,
     required bool isEmpty,
+    List<String>? pathResults,
   }) {
     if (isEmpty || !isValid || parsedData == null) {
       return _buildPlaceholder();
+    }
+    if (pathResults != null) {
+      return _buildSearchResultsList(pathResults, parsedData);
     }
     return _buildTreeView(parsedData);
   }
@@ -812,6 +923,143 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         style: GoogleFonts.jetBrainsMono(
           fontSize: AppDimensions.fontSizeM,
           color: AppColors.textMuted,
+        ),
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Path-list search results
+  // -------------------------------------------------------------------------
+
+  /// Returns the value at [path] by navigating [data].
+  dynamic _valueAtPath(dynamic data, String path) {
+    return _nodeAtSegments(data, JsonPath.toSegments(path));
+  }
+
+  /// Compact string representation of [value] for the results list.
+  String _valuePreview(dynamic value) {
+    if (value == null) return 'null';
+    if (value is String) {
+      final truncated = value.length > 60
+          ? '${value.substring(0, 60)}\u2026'
+          : value;
+      return '"$truncated"';
+    }
+    if (value is Map) {
+      final n = value.length;
+      return '{${n} ${n == 1 ? 'key' : 'keys'}}';
+    }
+    if (value is List) {
+      final n = value.length;
+      return '[${n} ${n == 1 ? 'item' : 'items'}]';
+    }
+    return value.toString();
+  }
+
+  /// Color that represents the type of [value].
+  Color _typeColorForValue(dynamic value) {
+    if (value == null) return AppColors.jsonNull;
+    if (value is String) return AppColors.jsonString;
+    if (value is num) return AppColors.jsonNumber;
+    if (value is bool) return AppColors.jsonBoolean;
+    return AppColors.jsonBracket; // Map / List
+  }
+
+  /// Builds a scrollable list of matching [paths] with value previews.
+  Widget _buildSearchResultsList(List<String> paths, dynamic data) {
+    if (paths.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off, size: 32, color: AppColors.textMuted),
+            const SizedBox(height: 8),
+            Text(
+              'No matches for "$_searchQuery"',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: AppDimensions.fontSizeS,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: paths.length,
+      itemBuilder: (context, index) {
+        final path = paths[index];
+        final value = _valueAtPath(data, path);
+        final isSelected = path == _selectedPath;
+        return _buildPathResultItem(path, value, isSelected);
+      },
+    );
+  }
+
+  /// Single row in the path results list.
+  Widget _buildPathResultItem(String path, dynamic value, bool isSelected) {
+    return InkWell(
+      onTap: () {
+        _updateSelectedPath(path);
+        final line = _getMapper()?.lineForPath(path);
+        if (line != null) {
+          ref.read(treeSelectedPathProvider.notifier).state = path;
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        color: isSelected
+            ? AppColors.primary.withValues(alpha: 0.12)
+            : Colors.transparent,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: 8,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(
+                Icons.chevron_right,
+                size: 14,
+                color: isSelected ? AppColors.primary : AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    path,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: AppDimensions.fontSizeS,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textPrimary,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _valuePreview(value),
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 11,
+                      color: _typeColorForValue(value),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
