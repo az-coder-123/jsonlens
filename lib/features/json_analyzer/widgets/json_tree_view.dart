@@ -728,6 +728,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Icon(
                 Icons.search,
@@ -756,48 +757,40 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
                   onChanged: (value) => setState(() => _searchQuery = value),
                 ),
               ),
-              // Match count badge (visible when path-list mode is on).
-              if (matchCount != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Text(
-                    '$matchCount',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 11,
-                      color: matchCount > 0
-                          ? AppColors.primary
-                          : AppColors.textMuted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              if (_searchQuery.isNotEmpty)
-                GestureDetector(
+              // Right-side action group.
+              const SizedBox(width: 8),
+              // Match count pill (path-list mode only).
+              if (matchCount != null) ...[
+                _SearchCountBadge(count: matchCount),
+                const SizedBox(width: 6),
+              ],
+              // Clear button.
+              if (_searchQuery.isNotEmpty) ...[
+                _SearchIconBtn(
+                  icon: Icons.close,
+                  tooltip: 'Clear',
                   onTap: _clearSearch,
-                  child: const Icon(
-                    Icons.close,
-                    size: AppDimensions.iconSizeS,
-                    color: AppColors.textSecondary,
-                  ),
+                  active: false,
                 ),
-              const SizedBox(width: 4),
+                const SizedBox(width: 2),
+              ],
+              // Thin vertical divider.
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                color: AppColors.border,
+              ),
               // Toggle between tree view and path-list results.
-              Tooltip(
-                message: _pathListMode
+              _SearchIconBtn(
+                icon: _pathListMode
+                    ? Icons.account_tree
+                    : Icons.format_list_bulleted,
+                tooltip: _pathListMode
                     ? 'Show tree view'
                     : 'Show results as path list',
-                child: GestureDetector(
-                  onTap: () => setState(() => _pathListMode = !_pathListMode),
-                  child: Icon(
-                    _pathListMode
-                        ? Icons.account_tree
-                        : Icons.format_list_bulleted,
-                    size: AppDimensions.iconSizeS,
-                    color: _pathListMode
-                        ? AppColors.primary
-                        : AppColors.textSecondary,
-                  ),
-                ),
+                onTap: () => setState(() => _pathListMode = !_pathListMode),
+                active: _pathListMode,
               ),
             ],
           ),
@@ -1146,6 +1139,68 @@ class _ScopeChip extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Search bar helper widgets
+// ---------------------------------------------------------------------------
+
+/// Small icon button used in the search bar action group.
+class _SearchIconBtn extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool active;
+
+  const _SearchIconBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    required this.active,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Icon(
+          icon,
+          size: AppDimensions.iconSizeS,
+          color: active ? AppColors.primary : AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Pill badge showing the number of search matches.
+class _SearchCountBadge extends StatelessWidget {
+  final int count;
+
+  const _SearchCountBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: count > 0
+            ? AppColors.primary.withValues(alpha: 0.15)
+            : AppColors.border.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$count',
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 11,
+          color: count > 0 ? AppColors.primary : AppColors.textMuted,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
