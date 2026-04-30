@@ -135,28 +135,3 @@ class OpenOutcome {
   static OpenOutcome opened(String contents, {String? path}) =>
       OpenOutcome._(OpenStatus.opened, contents: contents, path: path);
 }
-
-extension FileHelperOpen on FileHelper {
-  static Future<OpenOutcome> openTextFile({
-    List<String> extensions = const ['json', 'txt'],
-  }) async {
-    try {
-      final groups = [XTypeGroup(label: 'Text', extensions: extensions)];
-      final xfile = await openFile(acceptedTypeGroups: groups);
-
-      if (xfile == null) return const OpenOutcome.cancelled();
-
-      // Read contents (XFile provides readAsString)
-      final contents = await xfile.readAsString();
-      return OpenOutcome.opened(contents, path: xfile.path);
-    } on PlatformException catch (e, st) {
-      debugPrint('FileHelper.openTextFile PlatformException: $e');
-      debugPrint('Stack: $st');
-      return const OpenOutcome.failed();
-    } catch (e, st) {
-      debugPrint('FileHelper.openTextFile failed: $e');
-      debugPrint('Stack: $st');
-      return const OpenOutcome.failed();
-    }
-  }
-}

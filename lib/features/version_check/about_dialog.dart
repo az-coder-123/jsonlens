@@ -88,6 +88,7 @@ class _AboutAppDialogState extends ConsumerState<AboutAppDialog> {
                   await ref
                       .read(versionNotifierProvider.notifier)
                       .checkForUpdateIfConnected(force: true);
+                  if (!mounted) return;
                   setState(() => _checking = false);
                 },
           child: _checking

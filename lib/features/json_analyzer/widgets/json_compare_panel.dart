@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
+import '../../../shared/widgets/error_display.dart';
 import '../models/json_diff_result.dart';
 import '../providers/json_analyzer_provider.dart';
 
@@ -148,25 +149,7 @@ class _JsonComparePanelState extends ConsumerState<JsonComparePanel> {
     );
   }
 
-  Widget _buildError(String error) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, size: 48, color: AppColors.error),
-          const SizedBox(height: AppDimensions.paddingM),
-          Text(
-            error,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: AppDimensions.fontSizeM,
-              color: AppColors.error,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildError(String error) => ErrorDisplay.centered(error);
 
   Widget _buildDiffResult(JsonDiffResult result) {
     if (result.isIdentical) {

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../shared/widgets/error_display.dart';
 import '../../version_check/about_dialog.dart';
 import '../../version_check/version_banner.dart';
 import '../../version_check/version_notifier.dart';
@@ -287,44 +288,7 @@ class _TreeContent extends ConsumerWidget {
     return const JsonTreeViewWidget();
   }
 
-  Widget _buildError(String message) {
-    return Padding(
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(
-                Icons.error_outline,
-                color: AppColors.error,
-                size: AppDimensions.iconSizeM,
-              ),
-              SizedBox(width: AppDimensions.paddingS),
-              Text(
-                AppStrings.parseError,
-                style: TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: AppDimensions.fontSizeM,
-                  color: AppColors.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppDimensions.paddingS),
-          Text(
-            message,
-            style: const TextStyle(
-              fontFamily: 'JetBrains Mono',
-              fontSize: AppDimensions.fontSizeS,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildError(String message) => ErrorDisplay.inline(message);
 }
 
 /// Placeholder widget for History feature (coming soon).

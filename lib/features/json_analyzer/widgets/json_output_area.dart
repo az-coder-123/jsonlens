@@ -10,6 +10,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/performance_constants.dart';
+import '../../../shared/widgets/error_display.dart';
 import '../providers/json_analyzer_provider.dart';
 import 'processing_overlay.dart';
 
@@ -264,42 +265,7 @@ class _JsonOutputAreaState extends ConsumerState<JsonOutputArea> {
     );
   }
 
-  Widget _buildError(String errorMessage) {
-    return Padding(
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.error_outline,
-                color: AppColors.error,
-                size: AppDimensions.iconSizeM,
-              ),
-              const SizedBox(width: AppDimensions.paddingS),
-              Text(
-                AppStrings.parseError,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: AppDimensions.fontSizeM,
-                  color: AppColors.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppDimensions.paddingS),
-          Text(
-            errorMessage,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: AppDimensions.fontSizeS,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildError(String errorMessage) => ErrorDisplay.inline(errorMessage);
 
   /// Plain text rendering for large JSON files.
   /// Avoids expensive syntax highlighting for better performance.
