@@ -39,6 +39,8 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   bool _isSearchVisible = false;
   bool _isFilterVisible = false;
 
+  SearchScope _searchScope = SearchScope.both;
+
   /// Types currently hidden. Values: 'object','array','string','number','boolean','null'.
   final Set<String> _hiddenTypes = {};
 
@@ -105,6 +107,12 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       _searchController.clear();
     });
   }
+
+  String _searchHint() => switch (_searchScope) {
+    SearchScope.keysOnly => 'Search keys...',
+    SearchScope.valuesOnly => 'Search values...',
+    SearchScope.both => 'Search keys or values...',
+  };
 
   /// Computes all ancestor paths of [path] that need to be force-expanded.
   ///
@@ -643,46 +651,81 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         vertical: AppDimensions.paddingS,
       ),
       color: AppColors.surface,
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(
-            Icons.search,
-            size: AppDimensions.iconSizeS,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(width: AppDimensions.paddingS),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              autofocus: true,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: AppDimensions.fontSizeS,
-                color: AppColors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search keys or values...',
-                hintStyle: GoogleFonts.jetBrainsMono(
-                  fontSize: AppDimensions.fontSizeS,
-                  color: AppColors.textMuted,
-                ),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-              onChanged: (value) => setState(() => _searchQuery = value),
-            ),
-          ),
-          if (_searchQuery.isNotEmpty)
-            GestureDetector(
-              onTap: _clearSearch,
-              child: const Icon(
-                Icons.close,
+          Row(
+            children: [
+              const Icon(
+                Icons.search,
                 size: AppDimensions.iconSizeS,
                 color: AppColors.textSecondary,
               ),
-            ),
+              const SizedBox(width: AppDimensions.paddingS),
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: AppDimensions.fontSizeS,
+                    color: AppColors.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: _searchHint(),
+                    hintStyle: GoogleFonts.jetBrainsMono(
+                      fontSize: AppDimensions.fontSizeS,
+                      color: AppColors.textMuted,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (value) => setState(() => _searchQuery = value),
+                ),
+              ),
+              if (_searchQuery.isNotEmpty)
+                GestureDetector(
+                  onTap: _clearSearch,
+                  child: const Icon(
+                    Icons.close,
+                    size: AppDimensions.iconSizeS,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _buildScopeSelector(),
         ],
       ),
+    );
+  }
+
+  Widget _buildScopeSelector() {
+    return Row(
+      children: [
+        _ScopeChip(
+          label: 'Keys',
+          icon: Icons.vpn_key_outlined,
+          selected: _searchScope == SearchScope.keysOnly,
+          onSelected: () => setState(() => _searchScope = SearchScope.keysOnly),
+        ),
+        const SizedBox(width: 6),
+        _ScopeChip(
+          label: 'Both',
+          icon: Icons.manage_search,
+          selected: _searchScope == SearchScope.both,
+          onSelected: () => setState(() => _searchScope = SearchScope.both),
+        ),
+        const SizedBox(width: 6),
+        _ScopeChip(
+          label: 'Values',
+          icon: Icons.text_fields,
+          selected: _searchScope == SearchScope.valuesOnly,
+          onSelected: () =>
+              setState(() => _searchScope = SearchScope.valuesOnly),
+        ),
+      ],
     );
   }
 
@@ -780,6 +823,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       data: data,
       defaultExpandedDepth: settings.defaultExpandedDepth,
       searchQuery: _searchQuery,
+      searchScope: _searchScope,
       expansionGeneration: _expansionGeneration,
       forceExpandAll: _forceExpandAll,
       sortKeys: settings.sortKeys,
@@ -798,6 +842,64 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       },
       onValueChanged: _applyEdit,
       onNodeAction: _applyNodeAction,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scope chip widget
+// ---------------------------------------------------------------------------
+
+class _ScopeChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  const _ScopeChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onSelected,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.18)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 11,
+              color: selected ? AppColors.primary : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                color: selected ? AppColors.primary : AppColors.textSecondary,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

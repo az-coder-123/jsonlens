@@ -19,24 +19,48 @@ import 'node_children.dart';
 enum TreeNodeAction { addKey, addItem, delete, duplicate }
 
 // ---------------------------------------------------------------------------
+// Search scope
+// ---------------------------------------------------------------------------
+
+/// Which parts of each JSON node are matched during tree search.
+enum SearchScope {
+  /// Match against both keys and values (default).
+  both,
+
+  /// Match only against node keys.
+  keysOnly,
+
+  /// Match only against leaf values.
+  valuesOnly,
+}
+
+// ---------------------------------------------------------------------------
 // Search helpers
 // ---------------------------------------------------------------------------
 
-/// Returns true if [key] or [value] (recursively) contains [query] (case-insensitive).
-bool _matchesSearch(String key, dynamic value, String query) {
+/// Returns true if [key] or [value] (recursively) matches [query] under [scope].
+bool _matchesSearch(
+  String key,
+  dynamic value,
+  String query, [
+  SearchScope scope = SearchScope.both,
+]) {
   if (query.isEmpty) return false;
   final q = query.toLowerCase();
-  if (key.toLowerCase().contains(q)) return true;
+  final checkKeys = scope != SearchScope.valuesOnly;
+  final checkValues = scope != SearchScope.keysOnly;
+  if (checkKeys && key.toLowerCase().contains(q)) return true;
   if (value is Map<String, dynamic>) {
-    return value.entries.any((e) => _matchesSearch(e.key, e.value, q));
+    return value.entries.any((e) => _matchesSearch(e.key, e.value, q, scope));
   }
   if (value is List) {
     for (int i = 0; i < value.length; i++) {
-      if (_matchesSearch('[$i]', value[i], q)) return true;
+      if (_matchesSearch('[$i]', value[i], q, scope)) return true;
     }
     return false;
   }
-  return value.toString().toLowerCase().contains(q);
+  if (checkValues) return value.toString().toLowerCase().contains(q);
+  return false;
 }
 
 /// Builds a widget that highlights [query] within [text] using the given [style].
@@ -182,6 +206,9 @@ class LazyJsonTree extends StatelessWidget {
   /// called on the highlighted node's key.
   final ScrollController? scrollController;
 
+  /// Which parts of each node (keys, values, or both) to match during search.
+  final SearchScope searchScope;
+
   const LazyJsonTree({
     super.key,
     required this.data,
@@ -198,6 +225,7 @@ class LazyJsonTree extends StatelessWidget {
     this.forcedExpandedPaths = const {},
     this.highlightedNodeKey,
     this.scrollController,
+    this.searchScope = SearchScope.both,
   });
 
   @override
@@ -216,6 +244,7 @@ class LazyJsonTree extends StatelessWidget {
           isArrayIndex: true,
           defaultExpandedDepth: defaultExpandedDepth,
           searchQuery: searchQuery,
+          searchScope: searchScope,
           expansionGeneration: expansionGeneration,
           forceExpandAll: forceExpandAll,
           sortKeys: sortKeys,
@@ -250,6 +279,7 @@ class LazyJsonTree extends StatelessWidget {
           isArrayIndex: false,
           defaultExpandedDepth: defaultExpandedDepth,
           searchQuery: searchQuery,
+          searchScope: searchScope,
           expansionGeneration: expansionGeneration,
           forceExpandAll: forceExpandAll,
           sortKeys: sortKeys,
@@ -300,6 +330,9 @@ class _LazyNode extends StatefulWidget {
   /// GlobalKey attached to the highlighted node for scroll-to (propagated from [LazyJsonTree]).
   final GlobalKey? highlightedNodeKey;
 
+  /// Which parts of each node to match during search (propagated from [LazyJsonTree]).
+  final SearchScope searchScope;
+
   const _LazyNode({
     required this.keyName,
     required this.value,
@@ -318,6 +351,7 @@ class _LazyNode extends StatefulWidget {
     this.highlightedPath,
     this.forcedExpandedPaths = const {},
     this.highlightedNodeKey,
+    this.searchScope = SearchScope.both,
   });
 
   @override
@@ -364,7 +398,12 @@ class _LazyNodeState extends State<_LazyNode> {
   bool _computeExpanded() {
     // When a search is active, auto-expand nodes whose subtree contains a match.
     if (widget.searchQuery.isNotEmpty) {
-      return _matchesSearch(widget.keyName, widget.value, widget.searchQuery);
+      return _matchesSearch(
+        widget.keyName,
+        widget.value,
+        widget.searchQuery,
+        widget.searchScope,
+      );
     }
     // Force-expand specific ancestor paths for editor→tree sync.
     // Checked before forceExpandAll so that cursor navigation in the editor
@@ -375,6 +414,14 @@ class _LazyNodeState extends State<_LazyNode> {
     // Fall back to depth-based default.
     return widget.depth < widget.defaultExpandedDepth;
   }
+
+  /// Search query used for key highlighting — empty when scope is values-only.
+  String get _keyQuery =>
+      widget.searchScope != SearchScope.valuesOnly ? widget.searchQuery : '';
+
+  /// Search query used for value highlighting — empty when scope is keys-only.
+  String get _valueQuery =>
+      widget.searchScope != SearchScope.keysOnly ? widget.searchQuery : '';
 
   // -------------------------------------------------------------------------
   // Styles
@@ -491,11 +538,7 @@ class _LazyNodeState extends State<_LazyNode> {
         maxLines: 1,
       );
     }
-    return _buildHighlightedText(
-      _scalarText(v),
-      widget.searchQuery,
-      _valueStyle(v),
-    );
+    return _buildHighlightedText(_scalarText(v), _valueQuery, _valueStyle(v));
   }
 
   // -------------------------------------------------------------------------
@@ -755,6 +798,7 @@ class _LazyNodeState extends State<_LazyNode> {
       isArrayIndex: isArrayIndex,
       defaultExpandedDepth: widget.defaultExpandedDepth,
       searchQuery: widget.searchQuery,
+      searchScope: widget.searchScope,
       expansionGeneration: widget.expansionGeneration,
       forceExpandAll: widget.forceExpandAll,
       sortKeys: widget.sortKeys,
@@ -804,7 +848,7 @@ class _LazyNodeState extends State<_LazyNode> {
                 typeIcon: _buildTypeIcon(widget.value),
                 keyWidget: _buildHighlightedText(
                   '${widget.keyName}: ',
-                  widget.searchQuery,
+                  _keyQuery,
                   _keyStyle(),
                 ),
                 valueWidget: _buildValuePreview(),
@@ -842,7 +886,7 @@ class _LazyNodeState extends State<_LazyNode> {
                   typeIcon: _buildTypeIcon(widget.value),
                   keyWidget: _buildHighlightedText(
                     '${widget.keyName}: ',
-                    widget.searchQuery,
+                    _keyQuery,
                     _keyStyle(),
                   ),
                   valueWidget: _buildValuePreview(),
