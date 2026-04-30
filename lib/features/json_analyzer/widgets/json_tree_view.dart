@@ -18,6 +18,10 @@ import 'lazy_json_tree.dart';
 import 'processing_overlay.dart';
 import 'type_filter_bar.dart';
 
+part '_scope_chip.dart';
+part '_search_count_badge.dart';
+part '_search_icon_btn.dart';
+
 // ---------------------------------------------------------------------------
 // Path-list search helpers
 // ---------------------------------------------------------------------------
@@ -1083,126 +1087,6 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       },
       onValueChanged: _applyEdit,
       onNodeAction: _applyNodeAction,
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Scope chip widget
-// ---------------------------------------------------------------------------
-
-class _ScopeChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onSelected;
-
-  const _ScopeChip({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onSelected,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.primary.withValues(alpha: 0.18)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.border,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 11,
-              color: selected ? AppColors.primary : AppColors.textSecondary,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 11,
-                color: selected ? AppColors.primary : AppColors.textSecondary,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Search bar helper widgets
-// ---------------------------------------------------------------------------
-
-/// Small icon button used in the search bar action group.
-class _SearchIconBtn extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-  final bool active;
-
-  const _SearchIconBtn({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-    required this.active,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Icon(
-          icon,
-          size: AppDimensions.iconSizeS,
-          color: active ? AppColors.primary : AppColors.textSecondary,
-        ),
-      ),
-    );
-  }
-}
-
-/// Pill badge showing the number of search matches.
-class _SearchCountBadge extends StatelessWidget {
-  final int count;
-
-  const _SearchCountBadge({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: count > 0
-            ? AppColors.primary.withValues(alpha: 0.15)
-            : AppColors.border.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        '$count',
-        style: GoogleFonts.jetBrainsMono(
-          fontSize: 11,
-          color: count > 0 ? AppColors.primary : AppColors.textMuted,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
     );
   }
 }
