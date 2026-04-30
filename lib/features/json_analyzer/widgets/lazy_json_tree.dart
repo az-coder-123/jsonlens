@@ -921,57 +921,57 @@ class _LazyNodeState extends State<_LazyNode> {
                   : Colors.transparent,
               child: Padding(
                 padding: EdgeInsets.only(left: indent, top: 3, bottom: 3),
-              child: _isEditing
-                  ? Row(
-                      children: [
-                        _buildTypeIcon(widget.value),
-                        Flexible(
-                          child: _buildHighlightedText(
-                            '${widget.keyName}: ',
-                            widget.searchQuery,
-                            _keyStyle(),
+                child: _isEditing
+                    ? Row(
+                        children: [
+                          _buildTypeIcon(widget.value),
+                          Flexible(
+                            child: _buildHighlightedText(
+                              '${widget.keyName}: ',
+                              widget.searchQuery,
+                              _keyStyle(),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: AppDimensions.paddingS),
-                        Expanded(child: _buildInlineEditor()),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        _buildTypeIcon(widget.value),
-                        Flexible(
-                          child: _buildHighlightedText(
-                            '${widget.keyName}: ',
-                            widget.searchQuery,
-                            _keyStyle(),
+                          const SizedBox(width: AppDimensions.paddingS),
+                          Expanded(child: _buildInlineEditor()),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          _buildTypeIcon(widget.value),
+                          Flexible(
+                            child: _buildHighlightedText(
+                              '${widget.keyName}: ',
+                              widget.searchQuery,
+                              _keyStyle(),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: AppDimensions.paddingS),
-                        Expanded(child: _buildValuePreview()),
-                        if (widget.onValueChanged != null)
-                          Tooltip(
-                            message: 'Edit value (double-click)',
-                            child: InkWell(
-                              onTap: _startEditing,
-                              borderRadius: BorderRadius.circular(
-                                AppDimensions.radiusS,
-                              ),
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 2,
+                          const SizedBox(width: AppDimensions.paddingS),
+                          Expanded(child: _buildValuePreview()),
+                          if (widget.onValueChanged != null)
+                            Tooltip(
+                              message: 'Edit value (double-click)',
+                              child: InkWell(
+                                onTap: _startEditing,
+                                borderRadius: BorderRadius.circular(
+                                  AppDimensions.radiusS,
                                 ),
-                                child: Icon(
-                                  Icons.edit,
-                                  size: 11,
-                                  color: AppColors.textMuted,
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  child: Icon(
+                                    Icons.edit,
+                                    size: 11,
+                                    color: AppColors.textMuted,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        _buildCopyButton(),
-                      ],
-                    ),
+                          _buildCopyButton(),
+                        ],
+                      ),
               ),
             ),
           ),
@@ -993,48 +993,48 @@ class _LazyNodeState extends State<_LazyNode> {
           child: Padding(
             padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
             child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header row — tap toggles expansion and reports path.
-              InkWell(
-                onTap: () {
-                  setState(() => _expanded = !_expanded);
-                  widget.onPathSelected?.call(widget.path);
-                },
-                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _expanded ? Icons.expand_more : Icons.chevron_right,
-                        size: AppDimensions.iconSizeS,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 2),
-                      _buildTypeIcon(widget.value),
-                      Flexible(
-                        child: _buildHighlightedText(
-                          '${widget.keyName}: ',
-                          widget.searchQuery,
-                          _keyStyle(),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header row — tap toggles expansion and reports path.
+                InkWell(
+                  onTap: () {
+                    setState(() => _expanded = !_expanded);
+                    widget.onPathSelected?.call(widget.path);
+                  },
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _expanded ? Icons.expand_more : Icons.chevron_right,
+                          size: AppDimensions.iconSizeS,
+                          color: AppColors.textSecondary,
                         ),
-                      ),
-                      const SizedBox(width: AppDimensions.paddingS),
-                      Expanded(child: _buildValuePreview()),
-                      _buildCopyButton(),
-                    ],
+                        const SizedBox(width: 2),
+                        _buildTypeIcon(widget.value),
+                        Flexible(
+                          child: _buildHighlightedText(
+                            '${widget.keyName}: ',
+                            widget.searchQuery,
+                            _keyStyle(),
+                          ),
+                        ),
+                        const SizedBox(width: AppDimensions.paddingS),
+                        Expanded(child: _buildValuePreview()),
+                        _buildCopyButton(),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              // Children — built lazily, only when expanded.
-              if (_expanded) _buildChildrenWidget(),
-            ],
+                // Children — built lazily, only when expanded.
+                if (_expanded) _buildChildrenWidget(),
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 }
 

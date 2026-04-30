@@ -61,8 +61,9 @@ class JsonPositionMapper {
       final parentIsArray = stack.isNotEmpty && stack.last.isArray;
 
       // ---- Object key → value (e.g. `"name": "Alice"`) ----
-      final keyMatch =
-          RegExp(r'^"((?:[^"\\]|\\.)*)":\s*(.*)').firstMatch(trimmed);
+      final keyMatch = RegExp(
+        r'^"((?:[^"\\]|\\.)*)":\s*(.*)',
+      ).firstMatch(trimmed);
       if (keyMatch != null) {
         final key = keyMatch.group(1)!;
         final rest = _stripComma(keyMatch.group(2)!.trimRight());

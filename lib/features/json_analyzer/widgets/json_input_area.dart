@@ -73,7 +73,10 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     }
     // Debounced cursor-to-path sync for editor → tree direction.
     _cursorDebounceTimer?.cancel();
-    _cursorDebounceTimer = Timer(const Duration(milliseconds: 250), _syncCursorToTree);
+    _cursorDebounceTimer = Timer(
+      const Duration(milliseconds: 250),
+      _syncCursorToTree,
+    );
   }
 
   /// Maps the current cursor offset to a 0-based line number and writes it
