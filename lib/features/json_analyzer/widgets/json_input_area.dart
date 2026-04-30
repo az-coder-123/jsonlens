@@ -283,7 +283,7 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
         // ── Group 1: File ────────────────────────────────────────────────
         _iconBtn(
           tooltip: 'HTTP Request',
-          icon: Icons.cloud_download_outlined,
+          icon: Icons.http,
           onPressed: () => showDialog<void>(
             context: context,
             builder: (_) => const HttpRequestDialog(),
@@ -514,7 +514,7 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
         // ── File ──────────────────────────────────────────────────────────
         _menuSection('FILE'),
         _menuAction(
-          Icons.cloud_download_outlined,
+          Icons.http,
           'HTTP Request',
           true,
           () => showDialog<void>(

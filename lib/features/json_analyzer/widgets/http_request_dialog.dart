@@ -276,7 +276,7 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
       child: Row(
         children: [
           const Icon(
-            Icons.cloud_download_outlined,
+            Icons.http,
             color: AppColors.primary,
             size: AppDimensions.iconSizeM,
           ),
@@ -776,8 +776,8 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                         color: AppColors.textPrimary,
                       ),
                     )
-                  : const Icon(Icons.download, size: AppDimensions.iconSizeS),
-              label: Text(_isFetching ? 'Fetching…' : 'Fetch'),
+                  : const Icon(Icons.send, size: AppDimensions.iconSizeS),
+              label: Text(_isFetching ? 'Requesting…' : 'Request'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.buttonPrimary,
                 foregroundColor: AppColors.textPrimary,
