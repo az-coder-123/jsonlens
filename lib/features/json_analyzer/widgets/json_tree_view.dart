@@ -9,6 +9,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/settings/settings_provider.dart';
+import '../../../core/utils/json_position_mapper.dart';
 import '../providers/json_analyzer_provider.dart';
 import 'depth_dialog.dart';
 import 'lazy_json_tree.dart';
@@ -47,6 +48,21 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
 
   /// Types currently hidden. Values: 'object','array','string','number','boolean','null'.
   final Set<String> _hiddenTypes = {};
+
+  // Position mapper for bidirectional editor ↔ tree sync (ROADMAP 2.5).
+  JsonPositionMapper? _positionMapper;
+  String _lastMappedInput = '';
+
+  /// Returns a cached [JsonPositionMapper] for the current input text.
+  JsonPositionMapper? _getMapper() {
+    final input = ref.read(inputProvider);
+    if (input == _lastMappedInput) return _positionMapper;
+    _lastMappedInput = input;
+    if (!input.contains('\n') || input.isEmpty) {
+      return _positionMapper = null;
+    }
+    return _positionMapper = JsonPositionMapper.build(input);
+  }
 
   @override
   void dispose() {
@@ -355,6 +371,15 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
     final isProcessing = ref.watch(isProcessingProvider);
+
+    // Editor → Tree: highlight the node corresponding to the editor cursor.
+    ref.listen<int>(editorCursorLineProvider, (prev, next) {
+      if (next < 0) return;
+      final path = _getMapper()?.pathForLine(next);
+      if (path != null && path != _selectedPath) {
+        setState(() => _selectedPath = path);
+      }
+    });
 
     return Container(
       decoration: BoxDecoration(
@@ -870,7 +895,15 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       forceExpandAll: _forceExpandAll,
       sortKeys: settings.sortKeys,
       hiddenTypes: _hiddenTypes,
-      onPathSelected: (path) => setState(() => _selectedPath = path),
+      highlightedPath: _selectedPath,
+      onPathSelected: (path) {
+        setState(() => _selectedPath = path);
+        // Tree → Editor: scroll editor to the matching line.
+        final line = _getMapper()?.lineForPath(path);
+        if (line != null) {
+          ref.read(treeSelectedPathProvider.notifier).state = path;
+        }
+      },
       onValueChanged: _applyEdit,
       onNodeAction: _applyNodeAction,
     );

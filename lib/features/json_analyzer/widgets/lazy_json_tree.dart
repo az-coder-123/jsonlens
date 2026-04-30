@@ -155,6 +155,12 @@ class LazyJsonTree extends StatelessWidget {
   /// `'boolean'`, `'null'`. An empty set means all types are visible.
   final Set<String> hiddenTypes;
 
+  /// JSON path of the node to visually highlight (editor ↔ tree sync).
+  ///
+  /// When non-null and matching a node's own path, that node row is tinted
+  /// with a subtle primary-colour background.
+  final String? highlightedPath;
+
   const LazyJsonTree({
     super.key,
     required this.data,
@@ -167,6 +173,7 @@ class LazyJsonTree extends StatelessWidget {
     this.onValueChanged,
     this.onNodeAction,
     this.hiddenTypes = const {},
+    this.highlightedPath,
   });
 
   @override
@@ -191,6 +198,7 @@ class LazyJsonTree extends StatelessWidget {
           onValueChanged: onValueChanged,
           onNodeAction: onNodeAction,
           hiddenTypes: hiddenTypes,
+          highlightedPath: highlightedPath,
         ),
       );
     }
@@ -221,6 +229,7 @@ class LazyJsonTree extends StatelessWidget {
           onValueChanged: onValueChanged,
           onNodeAction: onNodeAction,
           hiddenTypes: hiddenTypes,
+          highlightedPath: highlightedPath,
         );
       },
     );
@@ -252,6 +261,9 @@ class _LazyNode extends StatefulWidget {
   /// Set of type names whose nodes should be hidden (propagated from [LazyJsonTree]).
   final Set<String> hiddenTypes;
 
+  /// JSON path to visually highlight (propagated from [LazyJsonTree]).
+  final String? highlightedPath;
+
   const _LazyNode({
     required this.keyName,
     required this.value,
@@ -267,6 +279,7 @@ class _LazyNode extends StatefulWidget {
     this.onValueChanged,
     this.onNodeAction,
     this.hiddenTypes = const {},
+    this.highlightedPath,
   });
 
   @override
@@ -801,6 +814,7 @@ class _LazyNodeState extends State<_LazyNode> {
       onValueChanged: widget.onValueChanged,
       onNodeAction: widget.onNodeAction,
       hiddenTypes: widget.hiddenTypes,
+      highlightedPath: widget.highlightedPath,
     );
   }
 
@@ -887,6 +901,8 @@ class _LazyNodeState extends State<_LazyNode> {
 
     final isContainer = widget.value is Map || widget.value is List;
     final indent = widget.depth * 12.0;
+    final isHighlighted =
+        widget.highlightedPath != null && widget.highlightedPath == widget.path;
 
     // ----- Leaf node -----
     if (!isContainer) {
@@ -898,8 +914,13 @@ class _LazyNodeState extends State<_LazyNode> {
           child: GestureDetector(
             onTap: () => widget.onPathSelected?.call(widget.path),
             onDoubleTap: widget.onValueChanged != null ? _startEditing : null,
-            child: Padding(
-              padding: EdgeInsets.only(left: indent, top: 3, bottom: 3),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              color: isHighlighted
+                  ? AppColors.primary.withValues(alpha: 0.12)
+                  : Colors.transparent,
+              child: Padding(
+                padding: EdgeInsets.only(left: indent, top: 3, bottom: 3),
               child: _isEditing
                   ? Row(
                       children: [
@@ -951,6 +972,7 @@ class _LazyNodeState extends State<_LazyNode> {
                         _buildCopyButton(),
                       ],
                     ),
+              ),
             ),
           ),
         ),
@@ -963,9 +985,14 @@ class _LazyNodeState extends State<_LazyNode> {
       onLongPressStart: (d) => _showContextMenu(context, d.globalPosition),
       child: Focus(
         onKeyEvent: _handleKeyEvent,
-        child: Padding(
-          padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
-          child: Column(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          color: isHighlighted
+              ? AppColors.primary.withValues(alpha: 0.08)
+              : Colors.transparent,
+          child: Padding(
+            padding: EdgeInsets.only(left: indent, top: 2, bottom: 2),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header row — tap toggles expansion and reports path.
@@ -1006,7 +1033,8 @@ class _LazyNodeState extends State<_LazyNode> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

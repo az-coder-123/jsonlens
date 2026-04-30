@@ -8,6 +8,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/performance_constants.dart';
+import '../../../core/utils/json_position_mapper.dart';
 import '../providers/json_analyzer_provider.dart';
 import 'json_find_replace_bar.dart';
 
@@ -29,10 +30,15 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   late final FocusNode _focusNode;
   late final UndoHistoryController _undoController;
   Timer? _debounceTimer;
+  Timer? _cursorDebounceTimer;
   bool _showFindReplace = false;
   int _lineCount = 1;
   int? _matchLine; // 1-based line of current find match
   Set<int> _matchLines = {}; // 1-based lines of all find matches
+
+  // Position mapper for editor ↔ tree sync (ROADMAP 2.5).
+  JsonPositionMapper? _positionMapper;
+  String _lastMappedText = '';
 
   @override
   void initState() {
@@ -56,6 +62,7 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     _focusNode.dispose();
     _undoController.dispose();
     _debounceTimer?.cancel();
+    _cursorDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -64,6 +71,50 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     if (count != _lineCount) {
       setState(() => _lineCount = count);
     }
+    // Debounced cursor-to-path sync for editor → tree direction.
+    _cursorDebounceTimer?.cancel();
+    _cursorDebounceTimer = Timer(const Duration(milliseconds: 250), _syncCursorToTree);
+  }
+
+  /// Maps the current cursor offset to a 0-based line number and writes it
+  /// to [editorCursorLineProvider] so the tree view can highlight the node.
+  void _syncCursorToTree() {
+    if (!mounted) return;
+    final sel = _controller.selection;
+    if (!sel.isValid || sel.baseOffset < 0) return;
+    final text = _controller.text;
+    final offset = sel.baseOffset.clamp(0, text.length);
+    final line = '\n'.allMatches(text.substring(0, offset)).length;
+    ref.read(editorCursorLineProvider.notifier).state = line;
+  }
+
+  /// Returns a cached [JsonPositionMapper] for the current editor text.
+  JsonPositionMapper? _getMapper() {
+    final text = _controller.text;
+    if (text == _lastMappedText) return _positionMapper;
+    _lastMappedText = text;
+    if (!text.contains('\n') || text.isEmpty) {
+      return _positionMapper = null;
+    }
+    return _positionMapper = JsonPositionMapper.build(text);
+  }
+
+  /// Scrolls the editor to [line] (0-based) using an animated scroll.
+  ///
+  /// JetBrains Mono 14px with height 1.5 → line height ≈ 21 px.
+  static const double _estimatedLineHeight = 21.0;
+
+  void _scrollEditorToLine(int line) {
+    if (!_scrollController.hasClients) return;
+    final target = (line * _estimatedLineHeight).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+    );
   }
 
   /// Keeps the line-number gutter in sync with the editor's vertical scroll.
@@ -111,6 +162,13 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
           _controller.selection = selection;
         }
       }
+    });
+
+    // Tree → Editor: scroll editor when user taps a tree node.
+    ref.listen<String>(treeSelectedPathProvider, (prev, next) {
+      if (next.isEmpty || next == prev) return;
+      final line = _getMapper()?.lineForPath(next);
+      if (line != null) _scrollEditorToLine(line);
     });
 
     return Container(

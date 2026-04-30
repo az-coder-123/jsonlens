@@ -310,6 +310,22 @@ final isReadOnlyModeProvider = Provider<bool>((ref) {
 });
 
 // ============================================================================
+// Editor ↔ Tree Sync Providers (ROADMAP 2.5)
+// ============================================================================
+
+/// The 0-based line of the editor cursor.
+///
+/// Updated by [JsonInputArea] when the user moves the insertion point.
+/// Read by [JsonTreeViewWidget] to highlight the corresponding tree node.
+final editorCursorLineProvider = StateProvider<int>((ref) => -1);
+
+/// The JSON path of the tree node most recently selected by the user.
+///
+/// Updated by [JsonTreeViewWidget] when a node is tapped.
+/// Read by [JsonInputArea] to scroll the editor to the matching line.
+final treeSelectedPathProvider = StateProvider<String>((ref) => '');
+
+// ============================================================================
 // Search Feature Providers
 // ============================================================================
 
