@@ -7,6 +7,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/clipboard_helper.dart';
 import '../../../core/utils/file_helper.dart';
 import '../providers/json_analyzer_provider.dart';
+import 'fetch_from_url_dialog.dart';
 
 /// Toolbar widget with action buttons for JSON operations.
 ///
@@ -72,6 +73,14 @@ class Toolbar extends ConsumerWidget {
                   tooltip: AppStrings.open,
                   onPressed: () => _handleOpen(ref),
                   icon: Icon(Icons.folder_open, color: AppColors.textPrimary),
+                ),
+                IconButton(
+                  tooltip: 'Fetch from URL',
+                  onPressed: () => _showFetchDialog(context),
+                  icon: const Icon(
+                    Icons.cloud_download_outlined,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
                 PopupMenuButton<String>(
                   tooltip: 'More',
@@ -175,6 +184,12 @@ class Toolbar extends ConsumerWidget {
                         ),
                         const SizedBox(width: AppDimensions.paddingS),
                         _ToolbarButton(
+                          icon: Icons.cloud_download_outlined,
+                          label: 'Fetch URL',
+                          onPressed: () => _showFetchDialog(context),
+                        ),
+                        const SizedBox(width: AppDimensions.paddingS),
+                        _ToolbarButton(
                           icon: Icons.save,
                           label: AppStrings.save,
                           onPressed: isValid && output.isNotEmpty
@@ -244,6 +259,13 @@ class Toolbar extends ConsumerWidget {
   Future<void> _handleFormat(WidgetRef ref) async {
     await ref.read(jsonAnalyzerProvider.notifier).format();
     onShowMessage(AppStrings.formatted);
+  }
+
+  void _showFetchDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => const FetchFromUrlDialog(),
+    );
   }
 
   Future<void> _handleMinify(WidgetRef ref) async {
