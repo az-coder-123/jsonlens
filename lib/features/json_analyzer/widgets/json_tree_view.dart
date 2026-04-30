@@ -9,6 +9,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/settings/settings_provider.dart';
+import '../../../core/utils/json_path.dart';
 import '../../../core/utils/json_position_mapper.dart';
 import '../providers/json_analyzer_provider.dart';
 import 'depth_dialog.dart';
@@ -122,7 +123,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   /// For `$.users[0].profile.name` returns:
   /// `{'$', '$.users', '$.users[0]', '$.users[0].profile'}`
   Set<String> _ancestorPaths(String path) {
-    final segments = _parseBreadcrumbs(path);
+    final segments = JsonPath.breadcrumbTokens(path);
     final ancestors = <String>{};
     for (int i = 0; i < segments.length - 1; i++) {
       ancestors.add(_pathFromSegments(segments, i));
@@ -198,15 +199,19 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   /// For arrays: extracts the first `[N]` index and divides by list length.
   /// For objects: finds the position of the root key in the key list.
   double _estimateRootFraction(String path, dynamic data) {
+    final tokens = JsonPath.breadcrumbTokens(path);
+    if (tokens.length < 2) return 0.0;
+
+    final root = tokens[1];
     if (data is List && data.isNotEmpty) {
-      final m = RegExp(r'^\$\[(\d+)\]').firstMatch(path);
-      if (m != null) return int.parse(m.group(1)!) / data.length;
+      if (root.startsWith('[') && root.endsWith(']')) {
+        final idx = int.tryParse(root.substring(1, root.length - 1));
+        if (idx != null) return idx / data.length;
+      }
     } else if (data is Map<String, dynamic> && data.isNotEmpty) {
-      final m = RegExp(r'^\$\.([^.\[]+)').firstMatch(path);
-      if (m != null) {
-        final key = m.group(1)!;
+      if (!root.startsWith('[')) {
         final keys = data.keys.toList();
-        final idx = keys.indexOf(key);
+        final idx = keys.indexOf(root);
         if (idx >= 0) return idx / keys.length;
       }
     }
@@ -216,33 +221,6 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   // -------------------------------------------------------------------------
   // Inline edit application
   // -------------------------------------------------------------------------
-
-  /// Tokenizes a JSON-Path string into ordered segments.
-  ///
-  /// Example: `$.users[0].name` -> `['$', 'users', '[0]', 'name']`.
-  List<String> _pathTokens(String path) {
-    if (path.isEmpty) return [];
-    final regex = RegExp(r'\$|[^.\[\]]+|\[\d+\]');
-    return [for (final match in regex.allMatches(path)) match.group(0)!];
-  }
-
-  /// Parses a JSON-Path like `$.users[0].name` into navigation keys.
-  ///
-  /// Returns a list of [String] (object key) or [int] (array index) segments,
-  /// skipping the leading `$`.
-  List<Object> _pathSegments(String path) {
-    final segments = <Object>[];
-    for (final token in _pathTokens(path)) {
-      if (token == r'$') continue;
-      if (token.startsWith('[') && token.endsWith(']')) {
-        final idx = int.tryParse(token.substring(1, token.length - 1));
-        if (idx != null) segments.add(idx);
-      } else {
-        segments.add(token);
-      }
-    }
-    return segments;
-  }
 
   /// Navigates [data] using [segments] (all but last), then sets the leaf.
   ///
@@ -286,7 +264,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     final parsedData = ref.read(parsedDataProvider);
     if (parsedData == null) return;
 
-    final segments = _pathSegments(path);
+    final segments = JsonPath.toSegments(path);
     final ok = _setAtPath(parsedData, segments, newValue);
     if (!ok) return;
 
@@ -316,7 +294,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   Future<void> _applyNodeAction(String path, TreeNodeAction action) async {
     final parsedData = ref.read(parsedDataProvider);
     if (parsedData == null) return;
-    final segments = _pathSegments(path);
+    final segments = JsonPath.toSegments(path);
 
     switch (action) {
       case TreeNodeAction.delete:
@@ -832,17 +810,6 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   // Breadcrumb bar
   // -------------------------------------------------------------------------
 
-  /// Parses a JSON-Path string (e.g. `$.users[0].profile`) into ordered
-  /// segments: `['$', 'users', '[0]', 'profile']`.
-  List<String> _parseBreadcrumbs(String path) {
-    final tokens = _pathTokens(path);
-    if (tokens.isEmpty) return [];
-    if (tokens.first != r'$') {
-      return ['\$', ...tokens];
-    }
-    return tokens;
-  }
-
   /// Reconstructs the JSON-Path string from [segments] up to index [upTo].
   String _pathFromSegments(List<String> segments, int upTo) {
     final buf = StringBuffer();
@@ -860,7 +827,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   }
 
   Widget _buildBreadcrumbBar() {
-    final segments = _parseBreadcrumbs(_selectedPath);
+    final segments = JsonPath.breadcrumbTokens(_selectedPath);
 
     return Container(
       height: 32,

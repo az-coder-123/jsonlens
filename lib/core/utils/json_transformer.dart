@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:isolate';
 
+import 'json_path.dart';
+
 /// Utility class for advanced JSON transformations.
 abstract final class JsonTransformer {
   /// Sorts all keys in the JSON object alphabetically.
@@ -167,21 +169,23 @@ abstract final class JsonTransformer {
   static dynamic getValueAtPath(dynamic data, String path) {
     if (path.isEmpty) return data;
 
-    final segments = _parsePath(path);
+    final segments = JsonPath.toSegments(path);
     dynamic current = data;
 
     for (final segment in segments) {
       if (current == null) return null;
 
-      if (segment.isArrayIndex) {
-        if (current is List && segment.index! < current.length) {
-          current = current[segment.index!];
+      if (segment is int) {
+        if (current is List && segment < current.length) {
+          current = current[segment];
         } else {
           return null;
         }
       } else {
-        if (current is Map && current.containsKey(segment.key)) {
-          current = current[segment.key];
+        if (segment is String &&
+            current is Map &&
+            current.containsKey(segment)) {
+          current = current[segment];
         } else {
           return null;
         }
@@ -191,34 +195,10 @@ abstract final class JsonTransformer {
     return current;
   }
 
-  static List<_PathSegment> _parsePath(String path) {
-    final segments = <_PathSegment>[];
-    final regex = RegExp(r'([^.\[\]]+)|\[(\d+)\]');
-
-    for (final match in regex.allMatches(path)) {
-      if (match.group(1) != null) {
-        segments.add(_PathSegment(key: match.group(1)));
-      } else if (match.group(2) != null) {
-        segments.add(_PathSegment(index: int.parse(match.group(2)!)));
-      }
-    }
-
-    return segments;
-  }
-
   /// Converts JSON to a formatted string representation.
   static String toFormattedString(dynamic data) {
     return const JsonEncoder.withIndent('  ').convert(data);
   }
-}
-
-class _PathSegment {
-  final String? key;
-  final int? index;
-
-  _PathSegment({this.key, this.index});
-
-  bool get isArrayIndex => index != null;
 }
 
 // ============================================================================
