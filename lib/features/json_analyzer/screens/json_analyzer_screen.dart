@@ -13,7 +13,6 @@ import '../widgets/json_compare_panel.dart';
 import '../widgets/json_input_area.dart';
 import '../widgets/json_path_query_panel.dart';
 import '../widgets/json_schema_panel.dart';
-import '../widgets/json_search_panel.dart';
 import '../widgets/json_statistics_panel.dart';
 import '../widgets/json_tree_view.dart';
 import '../widgets/toolbar.dart';
@@ -33,7 +32,6 @@ class JsonAnalyzerScreen extends ConsumerStatefulWidget {
 class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _toolsTabController;
-  bool _showSearch = false;
   bool _showTools = false;
 
   // Preserve the input area's state (TextEditingController, selection, etc.)
@@ -75,17 +73,9 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
     );
   }
 
-  void _toggleSearch() {
-    setState(() {
-      _showSearch = !_showSearch;
-      if (_showSearch) _showTools = false;
-    });
-  }
-
   void _toggleTools() {
     setState(() {
       _showTools = !_showTools;
-      if (_showTools) _showSearch = false;
     });
   }
 
@@ -114,14 +104,6 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
       actions: [
         IconButton(
           icon: Icon(
-            Icons.search,
-            color: _showSearch ? AppColors.primary : AppColors.textSecondary,
-          ),
-          onPressed: _toggleSearch,
-          tooltip: 'Search in JSON',
-        ),
-        IconButton(
-          icon: Icon(
             Icons.build,
             color: _showTools ? AppColors.primary : AppColors.textSecondary,
           ),
@@ -148,7 +130,6 @@ class _JsonAnalyzerScreenState extends ConsumerState<JsonAnalyzerScreen>
       children: [
         Toolbar(onShowMessage: _showMessage),
         AdvancedToolbar(onShowMessage: _showMessage),
-        if (_showSearch) const JsonSearchPanel(),
         if (_showTools) _buildToolsPanel(),
         Expanded(
           child: LayoutBuilder(

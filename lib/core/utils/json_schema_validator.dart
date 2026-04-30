@@ -127,8 +127,9 @@ class JsonSchemaValidator {
 
     if (value is String) _checkStringConstraints(schema, value, path);
     if (value is num) _checkNumericConstraints(schema, value, path);
-    if (value is Map<String, dynamic>)
+    if (value is Map<String, dynamic>) {
       _checkObjectConstraints(schema, value, path);
+    }
     if (value is List) _checkArrayConstraints(schema, value, path);
   }
 
