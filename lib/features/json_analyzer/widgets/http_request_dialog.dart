@@ -13,19 +13,19 @@ import '../providers/json_analyzer_provider.dart';
 ///
 /// Features:
 /// - URL input with validation
-/// - HTTP method selector (GET / POST)
+/// - HTTP method selector (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
 /// - Dynamic key-value header rows
-/// - Optional POST body input
+/// - Optional request body (shown for POST, PUT, PATCH)
 /// - Response preview before loading
 /// - Clear error messages for every failure mode
-class FetchFromUrlDialog extends ConsumerStatefulWidget {
-  const FetchFromUrlDialog({super.key});
+class HttpRequestDialog extends ConsumerStatefulWidget {
+  const HttpRequestDialog({super.key});
 
   @override
-  ConsumerState<FetchFromUrlDialog> createState() => _FetchFromUrlDialogState();
+  ConsumerState<HttpRequestDialog> createState() => _HttpRequestDialogState();
 }
 
-class _FetchFromUrlDialogState extends ConsumerState<FetchFromUrlDialog> {
+class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
   final _urlController = TextEditingController();
   final _bodyController = TextEditingController();
   final _urlFocus = FocusNode();
@@ -78,7 +78,7 @@ class _FetchFromUrlDialogState extends ConsumerState<FetchFromUrlDialog> {
       url: url,
       method: _method,
       headers: headers,
-      body: _method == 'POST' ? _bodyController.text : '',
+      body: JsonFetcher.methodHasBody(_method) ? _bodyController.text : '',
     );
 
     if (!mounted) return;
@@ -141,7 +141,7 @@ class _FetchFromUrlDialogState extends ConsumerState<FetchFromUrlDialog> {
                     _buildUrlRow(),
                     const SizedBox(height: AppDimensions.paddingM),
                     _buildHeadersSection(),
-                    if (_method == 'POST') ...[
+                    if (JsonFetcher.methodHasBody(_method)) ...[
                       const SizedBox(height: AppDimensions.paddingM),
                       _buildBodySection(),
                     ],
@@ -180,7 +180,7 @@ class _FetchFromUrlDialogState extends ConsumerState<FetchFromUrlDialog> {
           ),
           const SizedBox(width: AppDimensions.paddingS),
           const Text(
-            'Fetch JSON from URL',
+            'HTTP Request',
             style: TextStyle(
               color: AppColors.textPrimary,
               fontSize: AppDimensions.fontSizeL,
@@ -219,15 +219,24 @@ class _FetchFromUrlDialogState extends ConsumerState<FetchFromUrlDialog> {
               dropdownColor: AppColors.surface,
               style: GoogleFonts.jetBrainsMono(
                 fontSize: AppDimensions.fontSizeS,
-                color: _method == 'POST'
-                    ? AppColors.warning
-                    : AppColors.secondary,
+                color: _methodColor(_method),
                 fontWeight: FontWeight.w700,
               ),
-              items: const [
-                DropdownMenuItem(value: 'GET', child: Text('GET')),
-                DropdownMenuItem(value: 'POST', child: Text('POST')),
-              ],
+              items: JsonFetcher.supportedMethods
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        m,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: AppDimensions.fontSizeS,
+                          color: _methodColor(m),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
               onChanged: (v) => setState(() => _method = v ?? 'GET'),
             ),
           ),
@@ -522,6 +531,17 @@ class _FetchFromUrlDialogState extends ConsumerState<FetchFromUrlDialog> {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  /// Returns a color for each HTTP method following REST API convention.
+  Color _methodColor(String method) => switch (method) {
+    'GET' => AppColors.secondary, // teal — safe read
+    'POST' => AppColors.warning, // orange — create
+    'PUT' => const Color(0xFF569CD6), // blue — full replace
+    'PATCH' => const Color(0xFFB5CEA8), // green — partial update
+    'DELETE' => AppColors.error, // red — destructive
+    'HEAD' => AppColors.textSecondary,
+    _ => AppColors.textSecondary, // OPTIONS, fallback
+  };
 
   InputDecoration _fieldDecoration(String hint) {
     return InputDecoration(

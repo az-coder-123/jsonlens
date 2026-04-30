@@ -7,7 +7,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/clipboard_helper.dart';
 import '../../../core/utils/file_helper.dart';
 import '../providers/json_analyzer_provider.dart';
-import 'fetch_from_url_dialog.dart';
+import 'http_request_dialog.dart';
 
 /// Toolbar widget with action buttons for JSON operations.
 ///
@@ -75,7 +75,7 @@ class Toolbar extends ConsumerWidget {
                   icon: Icon(Icons.folder_open, color: AppColors.textPrimary),
                 ),
                 IconButton(
-                  tooltip: 'Fetch from URL',
+                  tooltip: 'HTTP Request',
                   onPressed: () => _showFetchDialog(context),
                   icon: const Icon(
                     Icons.cloud_download_outlined,
@@ -185,7 +185,7 @@ class Toolbar extends ConsumerWidget {
                         const SizedBox(width: AppDimensions.paddingS),
                         _ToolbarButton(
                           icon: Icons.cloud_download_outlined,
-                          label: 'Fetch URL',
+                          label: 'HTTP Request',
                           onPressed: () => _showFetchDialog(context),
                         ),
                         const SizedBox(width: AppDimensions.paddingS),
@@ -264,7 +264,7 @@ class Toolbar extends ConsumerWidget {
   void _showFetchDialog(BuildContext context) {
     showDialog<void>(
       context: context,
-      builder: (_) => const FetchFromUrlDialog(),
+      builder: (_) => const HttpRequestDialog(),
     );
   }
 

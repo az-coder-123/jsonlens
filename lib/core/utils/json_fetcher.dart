@@ -54,12 +54,28 @@ class JsonFetchResult {
 
 /// Fetches JSON from an HTTP endpoint.
 ///
-/// Supports GET and POST with custom headers. Times out after [timeout].
+/// Supports GET, POST, PUT, PATCH, DELETE, HEAD, and OPTIONS with custom
+/// headers. Times out after [timeout].
 class JsonFetcher {
   static const Duration _defaultTimeout = Duration(seconds: 15);
 
-  /// Fetches [url] using [method] (GET or POST) with optional [headers] and
-  /// [body] (POST only). Parses and validates the response as JSON.
+  /// All HTTP methods supported by the fetcher.
+  static const List<String> supportedMethods = [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'HEAD',
+    'OPTIONS',
+  ];
+
+  /// Whether [method] typically sends a request body.
+  static bool methodHasBody(String method) =>
+      const {'POST', 'PUT', 'PATCH'}.contains(method.toUpperCase());
+
+  /// Fetches [url] using [method] with optional [headers] and [body].
+  /// Parses and validates the response as JSON.
   static Future<JsonFetchResult> fetch({
     required String url,
     String method = 'GET',
@@ -87,16 +103,16 @@ class JsonFetcher {
 
     try {
       final http.Response response;
+      final upper = method.toUpperCase();
 
-      if (method.toUpperCase() == 'POST') {
-        response = await http
-            .post(uri, headers: effectiveHeaders, body: body)
-            .timeout(timeout);
-      } else {
-        response = await http
-            .get(uri, headers: effectiveHeaders)
-            .timeout(timeout);
-      }
+      response = await switch (upper) {
+        'POST' => http.post(uri, headers: effectiveHeaders, body: body),
+        'PUT' => http.put(uri, headers: effectiveHeaders, body: body),
+        'PATCH' => http.patch(uri, headers: effectiveHeaders, body: body),
+        'DELETE' => http.delete(uri, headers: effectiveHeaders),
+        'HEAD' => http.head(uri, headers: effectiveHeaders),
+        _ => http.get(uri, headers: effectiveHeaders), // GET, OPTIONS, fallback
+      }.timeout(timeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return JsonFetchResult._(
