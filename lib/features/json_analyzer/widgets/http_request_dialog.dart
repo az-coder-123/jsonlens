@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
+import '../../../core/utils/curl_parser.dart';
 import '../../../core/utils/json_fetcher.dart';
 import '../providers/json_analyzer_provider.dart';
 
@@ -16,6 +17,7 @@ import '../providers/json_analyzer_provider.dart';
 /// - HTTP method selector (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
 /// - Dynamic key-value header rows
 /// - Optional request body (shown for POST, PUT, PATCH)
+/// - Import from cURL command string
 /// - Response preview before loading
 /// - Clear error messages for every failure mode
 class HttpRequestDialog extends ConsumerStatefulWidget {
@@ -28,12 +30,15 @@ class HttpRequestDialog extends ConsumerStatefulWidget {
 class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
   final _urlController = TextEditingController();
   final _bodyController = TextEditingController();
+  final _curlController = TextEditingController();
   final _urlFocus = FocusNode();
 
   String _method = 'GET';
   final List<_HeaderRow> _headers = [];
 
   bool _isFetching = false;
+  bool _showCurlInput = false;
+  String? _curlError;
 
   /// Non-null after a successful fetch — holds the raw JSON string to preview.
   String? _previewJson;
@@ -47,6 +52,7 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
   void dispose() {
     _urlController.dispose();
     _bodyController.dispose();
+    _curlController.dispose();
     _urlFocus.dispose();
     for (final h in _headers) {
       h.dispose();
@@ -113,6 +119,53 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
     });
   }
 
+  // Parses the pasted cURL command and populates all request fields.
+  void _applyCurl() {
+    final raw = _curlController.text.trim();
+    if (raw.isEmpty) return;
+
+    try {
+      final cmd = CurlParser.parse(raw);
+
+      // Populate URL & method.
+      _urlController.text = cmd.url;
+
+      final upperMethod = cmd.method.toUpperCase();
+      final validMethod = JsonFetcher.supportedMethods.contains(upperMethod)
+          ? upperMethod
+          : 'GET';
+
+      // Replace existing headers with parsed ones.
+      for (final h in _headers) {
+        h.dispose();
+      }
+      _headers.clear();
+      for (final entry in cmd.headers.entries) {
+        final row = _HeaderRow();
+        row.keyController.text = entry.key;
+        row.valueController.text = entry.value;
+        _headers.add(row);
+      }
+
+      // Populate body.
+      _bodyController.text = cmd.body;
+
+      setState(() {
+        _method = validMethod;
+        _showCurlInput = false;
+        _curlError = null;
+        // Reset previous results.
+        _previewJson = null;
+        _errorMessage = null;
+        _responseStatusCode = null;
+      });
+
+      _curlController.clear();
+    } on FormatException catch (e) {
+      setState(() => _curlError = e.message);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -138,6 +191,12 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_showCurlInput) ...[
+                      _buildCurlSection(),
+                      const SizedBox(height: AppDimensions.paddingM),
+                      const Divider(color: AppColors.border, height: 1),
+                      const SizedBox(height: AppDimensions.paddingM),
+                    ],
                     _buildUrlRow(),
                     const SizedBox(height: AppDimensions.paddingM),
                     _buildHeadersSection(),
@@ -188,6 +247,29 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
             ),
           ),
           const Spacer(),
+          TextButton.icon(
+            onPressed: () => setState(() {
+              _showCurlInput = !_showCurlInput;
+              _curlError = null;
+            }),
+            icon: Icon(
+              Icons.terminal,
+              size: AppDimensions.iconSizeS,
+              color: _showCurlInput
+                  ? AppColors.primary
+                  : AppColors.textSecondary,
+            ),
+            label: Text(
+              'Import cURL',
+              style: TextStyle(
+                fontSize: AppDimensions.fontSizeS,
+                color: _showCurlInput
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
+              ),
+            ),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+          ),
           IconButton(
             icon: const Icon(Icons.close, size: AppDimensions.iconSizeM),
             color: AppColors.textSecondary,
@@ -197,6 +279,72 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCurlSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.terminal,
+              size: AppDimensions.iconSizeS,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: AppDimensions.paddingXS),
+            const Text(
+              'Paste cURL command',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: AppDimensions.fontSizeS,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppDimensions.paddingXS),
+        TextField(
+          controller: _curlController,
+          maxLines: 4,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: AppDimensions.fontSizeS,
+            color: AppColors.textPrimary,
+            height: 1.5,
+          ),
+          decoration: _fieldDecoration(
+            'curl -X POST https://api.example.com/data \\\n  -H "Authorization: Bearer token" \\\n  -d \'{"key":"value"}\'',
+          ),
+        ),
+        if (_curlError != null) ...[
+          const SizedBox(height: AppDimensions.paddingXS),
+          Text(
+            _curlError!,
+            style: const TextStyle(
+              color: AppColors.error,
+              fontSize: AppDimensions.fontSizeS,
+            ),
+          ),
+        ],
+        const SizedBox(height: AppDimensions.paddingS),
+        Align(
+          alignment: Alignment.centerRight,
+          child: ElevatedButton.icon(
+            onPressed: _applyCurl,
+            icon: const Icon(Icons.input, size: AppDimensions.iconSizeS),
+            label: const Text('Apply'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.buttonPrimary,
+              foregroundColor: AppColors.textPrimary,
+              visualDensity: VisualDensity.compact,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
