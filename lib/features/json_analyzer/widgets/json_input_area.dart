@@ -32,6 +32,7 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   bool _showFindReplace = false;
   int _lineCount = 1;
   int? _matchLine; // 1-based line of current find match
+  Set<int> _matchLines = {}; // 1-based lines of all find matches
 
   @override
   void initState() {
@@ -129,8 +130,11 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
               onClose: () => setState(() {
                 _showFindReplace = false;
                 _matchLine = null;
+                _matchLines = {};
               }),
               onMatchLine: (line) => setState(() => _matchLine = line),
+              onMatchLinesChanged: (lines) =>
+                  setState(() => _matchLines = lines),
             ),
           const Divider(height: 1),
           Expanded(
@@ -335,52 +339,63 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     );
   }
 
-  /// Gutter widget showing 1-based line numbers, scrolled in sync with the editor.
+  /// Gutter widget showing 1-based line numbers — virtualized via ListView.builder
+  /// so only visible rows are built, keeping performance good for large files.
   Widget _buildLineNumberGutter() {
-    // Each line occupies exactly fontSize * lineHeight pixels.
     const lineHeight = AppDimensions.fontSizeM * 1.5;
+    const topPadding = AppDimensions.paddingM;
 
     return Container(
       width: AppDimensions.lineNumberWidth,
       color: AppColors.surface,
-      child: SingleChildScrollView(
-        controller: _lineNumberScrollController,
-        physics: const NeverScrollableScrollPhysics(),
-        child: Padding(
-          padding: const EdgeInsets.only(
-            top: AppDimensions.paddingM,
-            bottom: AppDimensions.paddingM,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: List.generate(_lineCount, (i) {
-              final lineNum = i + 1;
-              final isActive = lineNum == _matchLine;
-              return Container(
-                height: lineHeight,
-                decoration: isActive
-                    ? BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(
-                          AppDimensions.radiusS,
-                        ),
-                      )
-                    : null,
-                padding: const EdgeInsets.only(right: AppDimensions.paddingS),
-                alignment: Alignment.centerRight,
-                child: Text(
-                  '$lineNum',
-                  textAlign: TextAlign.right,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: AppDimensions.fontSizeM,
-                    color: isActive ? AppColors.primary : AppColors.textMuted,
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                    height: 1.5,
-                  ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: topPadding),
+        child: ListView.builder(
+          controller: _lineNumberScrollController,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _lineCount,
+          itemExtent: lineHeight,
+          itemBuilder: (context, i) {
+            final lineNum = i + 1;
+            final isCurrent = lineNum == _matchLine;
+            final isMatch = !isCurrent && _matchLines.contains(lineNum);
+
+            final bgColor = isCurrent
+                ? AppColors.primary.withValues(alpha: 0.28)
+                : isMatch
+                ? AppColors.primary.withValues(alpha: 0.10)
+                : null;
+
+            final textColor = isCurrent
+                ? AppColors.primary
+                : isMatch
+                ? AppColors.primary.withValues(alpha: 0.65)
+                : AppColors.textMuted;
+
+            return Container(
+              height: lineHeight,
+              decoration: bgColor != null
+                  ? BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(
+                        AppDimensions.radiusS,
+                      ),
+                    )
+                  : null,
+              padding: const EdgeInsets.only(right: AppDimensions.paddingS),
+              alignment: Alignment.centerRight,
+              child: Text(
+                '$lineNum',
+                textAlign: TextAlign.right,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: AppDimensions.fontSizeM,
+                  color: textColor,
+                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                  height: 1.5,
                 ),
-              );
-            }),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

@@ -27,6 +27,7 @@ class JsonFindReplaceBar extends StatefulWidget {
     required this.onTextReplaced,
     required this.onClose,
     this.onMatchLine,
+    this.onMatchLinesChanged,
   });
 
   /// The [TextEditingController] of the JSON editor.
@@ -40,6 +41,10 @@ class JsonFindReplaceBar extends StatefulWidget {
   /// Called with the 1-based line number of the current match whenever
   /// navigation moves to a new match. Called with null when there are no matches.
   final void Function(int? lineNumber)? onMatchLine;
+
+  /// Called with the set of all 1-based line numbers that contain at least one
+  /// match. Called with an empty set when there are no matches.
+  final void Function(Set<int> lines)? onMatchLinesChanged;
 
   @override
   State<JsonFindReplaceBar> createState() => _JsonFindReplaceBarState();
@@ -97,6 +102,7 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
         _currentIndex = -1;
       });
       widget.onMatchLine?.call(null);
+      widget.onMatchLinesChanged?.call({});
       return;
     }
 
@@ -116,8 +122,10 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
       _currentIndex = first;
     });
     if (first >= 0) {
+      _notifyAllMatchLines(starts);
       _selectMatch(first);
     } else {
+      widget.onMatchLinesChanged?.call({});
       widget.onMatchLine?.call(null);
     }
   }
@@ -155,6 +163,15 @@ class _JsonFindReplaceBarState extends State<JsonFindReplaceBar> {
       lengths.add(needle.length);
       pos = i + needle.length;
     }
+  }
+
+  /// Notifies [onMatchLinesChanged] with all lines containing a match.
+  void _notifyAllMatchLines(List<int> starts) {
+    final lines = <int>{};
+    for (final offset in starts) {
+      lines.add(_lineOfOffset(offset));
+    }
+    widget.onMatchLinesChanged?.call(lines);
   }
 
   void _selectMatch(int index) {
