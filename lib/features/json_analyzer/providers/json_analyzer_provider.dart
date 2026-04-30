@@ -112,6 +112,14 @@ class JsonAnalyzerNotifier extends StateNotifier<JsonAnalyzerState> {
     }
   }
 
+  /// Updates the input from an already-parsed JSON object.
+  Future<void> updateFromParsedData(dynamic data) async {
+    try {
+      final formatted = await JsonFormatter.formatObjectAsync(data);
+      await updateInput(formatted);
+    } catch (_) {}
+  }
+
   /// Gets the formatted output, generating on-demand if needed.
   Future<String> getFormattedOutput() async {
     if (state.output.isNotEmpty) {

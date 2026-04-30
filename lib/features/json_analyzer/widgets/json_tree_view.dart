@@ -217,42 +217,30 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   // Inline edit application
   // -------------------------------------------------------------------------
 
+  /// Tokenizes a JSON-Path string into ordered segments.
+  ///
+  /// Example: `$.users[0].name` -> `['$', 'users', '[0]', 'name']`.
+  List<String> _pathTokens(String path) {
+    if (path.isEmpty) return [];
+    final regex = RegExp(r'\$|[^.\[\]]+|\[\d+\]');
+    return [for (final match in regex.allMatches(path)) match.group(0)!];
+  }
+
   /// Parses a JSON-Path like `$.users[0].name` into navigation keys.
   ///
   /// Returns a list of [String] (object key) or [int] (array index) segments,
   /// skipping the leading `$`.
   List<Object> _pathSegments(String path) {
     final segments = <Object>[];
-    var rest = path.startsWith(r'$') ? path.substring(1) : path;
-
-    while (rest.isNotEmpty) {
-      if (rest.startsWith('.')) rest = rest.substring(1);
-
-      if (rest.startsWith('[')) {
-        final end = rest.indexOf(']');
-        if (end == -1) break;
-        final idx = int.tryParse(rest.substring(1, end));
+    for (final token in _pathTokens(path)) {
+      if (token == r'$') continue;
+      if (token.startsWith('[') && token.endsWith(']')) {
+        final idx = int.tryParse(token.substring(1, token.length - 1));
         if (idx != null) segments.add(idx);
-        rest = rest.substring(end + 1);
       } else {
-        final dotIdx = rest.indexOf('.');
-        final bracketIdx = rest.indexOf('[');
-        final int end;
-        if (dotIdx == -1 && bracketIdx == -1) {
-          end = rest.length;
-        } else if (dotIdx == -1) {
-          end = bracketIdx;
-        } else if (bracketIdx == -1) {
-          end = dotIdx;
-        } else {
-          end = dotIdx < bracketIdx ? dotIdx : bracketIdx;
-        }
-        if (end == 0) break;
-        segments.add(rest.substring(0, end));
-        rest = rest.substring(end);
+        segments.add(token);
       }
     }
-
     return segments;
   }
 
@@ -286,6 +274,10 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     return false;
   }
 
+  Future<void> _commitDataChange(dynamic data) async {
+    await ref.read(jsonAnalyzerProvider.notifier).updateFromParsedData(data);
+  }
+
   /// Called by [LazyJsonTree] when a leaf value is edited inline.
   ///
   /// Navigates the current parsed data to the node at [path], updates it,
@@ -298,8 +290,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     final ok = _setAtPath(parsedData, segments, newValue);
     if (!ok) return;
 
-    final json = const JsonEncoder.withIndent('  ').convert(parsedData);
-    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+    await _commitDataChange(parsedData);
   }
 
   // -------------------------------------------------------------------------
@@ -405,8 +396,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       return;
     }
 
-    final json = const JsonEncoder.withIndent('  ').convert(data);
-    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+    await _commitDataChange(data);
   }
 
   Future<void> _addKey(dynamic data, List<Object> segments) async {
@@ -429,8 +419,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
 
     node[finalKey] = null;
 
-    final json = const JsonEncoder.withIndent('  ').convert(data);
-    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+    await _commitDataChange(data);
   }
 
   Future<void> _addItem(dynamic data, List<Object> segments) async {
@@ -439,8 +428,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
 
     node.add(null);
 
-    final json = const JsonEncoder.withIndent('  ').convert(data);
-    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+    await _commitDataChange(data);
   }
 
   Future<void> _duplicateNode(dynamic data, List<Object> segments) async {
@@ -470,8 +458,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       return;
     }
 
-    final json = const JsonEncoder.withIndent('  ').convert(data);
-    await ref.read(jsonAnalyzerProvider.notifier).updateInput(json);
+    await _commitDataChange(data);
   }
 
   // -------------------------------------------------------------------------
@@ -848,43 +835,12 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   /// Parses a JSON-Path string (e.g. `$.users[0].profile`) into ordered
   /// segments: `['$', 'users', '[0]', 'profile']`.
   List<String> _parseBreadcrumbs(String path) {
-    final segments = <String>[];
-    if (path.isEmpty) return segments;
-
-    // Always starts with `$`.
-    segments.add('\$');
-    var rest = path.startsWith('\$') ? path.substring(1) : path;
-
-    while (rest.isNotEmpty) {
-      if (rest.startsWith('.')) rest = rest.substring(1);
-
-      if (rest.startsWith('[')) {
-        // Array index segment like [0].
-        final end = rest.indexOf(']');
-        if (end == -1) break;
-        segments.add(rest.substring(0, end + 1));
-        rest = rest.substring(end + 1);
-      } else {
-        // Named key — read until next `.` or `[`.
-        final dotIdx = rest.indexOf('.');
-        final bracketIdx = rest.indexOf('[');
-        final int end;
-        if (dotIdx == -1 && bracketIdx == -1) {
-          end = rest.length;
-        } else if (dotIdx == -1) {
-          end = bracketIdx;
-        } else if (bracketIdx == -1) {
-          end = dotIdx;
-        } else {
-          end = dotIdx < bracketIdx ? dotIdx : bracketIdx;
-        }
-        if (end == 0) break; // safeguard
-        segments.add(rest.substring(0, end));
-        rest = rest.substring(end);
-      }
+    final tokens = _pathTokens(path);
+    if (tokens.isEmpty) return [];
+    if (tokens.first != r'$') {
+      return ['\$', ...tokens];
     }
-
-    return segments;
+    return tokens;
   }
 
   /// Reconstructs the JSON-Path string from [segments] up to index [upTo].
