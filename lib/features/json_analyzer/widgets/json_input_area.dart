@@ -105,15 +105,21 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     return _positionMapper = JsonPositionMapper.build(text);
   }
 
-  /// Scrolls the editor to [line] (0-based) using an animated scroll.
+  /// Scrolls the editor to [line] (0-based) only when it is outside the
+  /// visible viewport. If already visible, no scroll is performed.
   ///
   /// JetBrains Mono 14px with height 1.5 → line height ≈ 21 px.
   void _scrollEditorToLine(int line) {
     if (!_scrollController.hasClients) return;
-    final target = (line * AppDimensions.estimatedLineHeight).clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
+    final lineTop = line * AppDimensions.estimatedLineHeight;
+    final lineBottom = lineTop + AppDimensions.estimatedLineHeight;
+    final viewTop = _scrollController.offset;
+    final viewBottom = viewTop + _scrollController.position.viewportDimension;
+    if (lineTop >= viewTop && lineBottom <= viewBottom) {
+      return; // already visible
+    }
+    final target = (lineTop - _scrollController.position.viewportDimension / 3)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
     _scrollController.animateTo(
       target,
       duration: const Duration(milliseconds: 280),
@@ -194,7 +200,10 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
                 _matchLine = null;
                 _matchLines = {};
               }),
-              onMatchLine: (line) => setState(() => _matchLine = line),
+              onMatchLine: (line) {
+                setState(() => _matchLine = line);
+                if (line != null) _scrollEditorToLine(line - 1);
+              },
               onMatchLinesChanged: (lines) =>
                   setState(() => _matchLines = lines),
             ),
