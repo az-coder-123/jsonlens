@@ -249,15 +249,27 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   ///      soon as the key's context becomes available.
   static const int _maxScrollAttempts = 10;
 
-  void _scheduleScrollToHighlighted({int attempt = 0}) {
-    // On the very first miss, nudge the outer scroll toward the target region
-    // so the lazy ListView renders the right items.
-    if (attempt == 0) _preScrollToTarget();
+  /// Returns `true` if the render object for [ctx] is fully visible inside
+  /// the nearest [Scrollable] ancestor's viewport.
+  bool _isNodeVisible(BuildContext ctx) {
+    final ro = ctx.findRenderObject();
+    if (ro is! RenderBox || !ro.hasSize) return false;
+    final scrollable = Scrollable.maybeOf(ctx);
+    if (scrollable == null) return false;
+    final scrollRO = scrollable.context.findRenderObject();
+    if (scrollRO is! RenderBox) return false;
+    final itemPos = ro.localToGlobal(Offset.zero, ancestor: scrollRO);
+    final viewportHeight = scrollRO.size.height;
+    return itemPos.dy >= 0 && itemPos.dy + ro.size.height <= viewportHeight;
+  }
 
+  void _scheduleScrollToHighlighted({int attempt = 0}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final ctx = _highlightedNodeKey.currentContext;
       if (ctx != null) {
+        // Skip scrolling if the node is already fully visible in the viewport.
+        if (_isNodeVisible(ctx)) return;
         Scrollable.ensureVisible(
           ctx,
           duration: const Duration(milliseconds: 300),
@@ -265,6 +277,9 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
           alignment: 0.3,
         );
       } else if (attempt < _maxScrollAttempts) {
+        // Node not yet built — nudge the outer ListView toward the target area
+        // so the lazy virtualiser renders the relevant items, then retry.
+        if (attempt == 0) _preScrollToTarget();
         _scheduleScrollToHighlighted(attempt: attempt + 1);
       }
     });
