@@ -78,7 +78,7 @@ _Showcase: concise, professional visual overview of key UI flows._
 | Http Request | Statistics Panel |
 |---|---|
 | ![Http Request](screenshots/http-request.png) | ![Statistics panel](screenshots/statistics.png) |
-| Query JSON paths and filter results. | View JSON statistics and metrics at a glance. |
+| Fetch and analyze JSON from API endpoints in real-time. | View JSON statistics and metrics at a glance. |
 
 ---
 
