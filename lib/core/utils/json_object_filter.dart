@@ -5,8 +5,6 @@ import '../../features/json_analyzer/models/search_filter.dart';
 abstract final class JsonObjectFilter {
   /// Returns JSON-paths of every Map node (or List item that is a Map) where
   /// every condition in [filters] is satisfied simultaneously.
-  ///
-  /// An empty [filters] list returns an empty result immediately.
   static List<String> findMatching(
     dynamic data,
     List<SearchFilter> filters, {
@@ -40,17 +38,9 @@ abstract final class JsonObjectFilter {
 
   /// Returns `true` when [obj] at [nodePath] satisfies [filter].
   ///
-  /// **Simple key** (no dots): the key is resolved directly from [obj] with a
-  /// one-level shallow fallback into nested objects/arrays.
-  ///
-  /// **Dotted path** (`"apis.name"`, `"contact.email"`): the node must
-  ///   1. Be located *within* the path-prefix context (i.e. every prefix
-  ///      segment must appear in [nodePath] in order), **and**
-  ///   2. Directly own the last key as a property.
-  ///
-  /// This ensures `apis.name contains "email"` matches `$.apis[0]` (which
-  /// directly has `name`) rather than `$` (which only reaches `name` via deep
-  /// traversal).
+  /// **Simple key**: looked up directly with a shallow fallback.
+  /// **Dotted path**: the node must be within the prefix context AND
+  ///   directly own the last key.
   static bool _satisfies(
     Map<String, dynamic> obj,
     SearchFilter filter,
@@ -59,35 +49,114 @@ abstract final class JsonObjectFilter {
     final key = filter.key;
 
     if (!key.contains('.')) {
-      // Simple key — direct lookup with shallow fallback.
       final raw = _resolveSimple(obj, key);
       return _checkValue(raw, filter);
     }
 
-    // Dotted path — context-aware matching.
     final parts = key.split('.');
     final lastKey = parts.last;
     final prefixSegments = parts.sublist(0, parts.length - 1);
 
-    // Guard 1: the node's path must contain every prefix segment in order.
     if (!_pathContainsSegments(nodePath, prefixSegments)) return false;
-
-    // Guard 2: the node must directly own the last key.
     if (!obj.containsKey(lastKey)) return false;
-
     return _checkValue(obj[lastKey], filter);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Type-aware value matching
+  // ---------------------------------------------------------------------------
+
+  /// Recursively checks whether [raw] satisfies [filter] with full type-awareness.
+  ///
+  /// | [ValueType]       | Behaviour                                         |
+  /// |-------------------|---------------------------------------------------|
+  /// | `any`             | Loose: converts to string, type-agnostic.        |
+  /// | `string`          | Strict: only matches `String` runtime values.    |
+  /// | `number`          | Strict: only matches `num`; compares numerically.|
+  /// | `boolean`         | Strict: only matches `bool`.                     |
+  /// | `nullValue`       | Strict: only matches Dart `null`.                |
+  ///
+  /// Lists are flattened: the condition passes if ANY element passes.
+  static bool _checkValue(dynamic raw, SearchFilter filter) {
+    if (raw is List) return raw.any((item) => _checkValue(item, filter));
+
+    return switch (filter.valueType) {
+      ValueType.nullValue => raw == null,
+      ValueType.boolean => _checkBoolean(raw, filter),
+      ValueType.number => _checkNumber(raw, filter),
+      ValueType.string => _checkString(raw, filter),
+      ValueType.any => _checkAny(raw, filter),
+    };
+  }
+
+  /// Null matching — `true` only when [raw] is Dart `null`.
+  static bool _checkBoolean(dynamic raw, SearchFilter filter) {
+    if (raw is! bool) return false;
+    final expected = filter.value.toLowerCase() == 'true';
+    return switch (filter.operator) {
+      FilterOperator.equals => raw == expected,
+      FilterOperator.notEquals => raw != expected,
+      _ => false,
+    };
+  }
+
+  /// Numeric matching — parses both sides and compares with full operator set.
+  static bool _checkNumber(dynamic raw, SearchFilter filter) {
+    final actual = raw is num ? raw : num.tryParse(raw.toString());
+    if (actual == null) return false;
+    final expected = num.tryParse(filter.value);
+    if (expected == null) return false;
+    return switch (filter.operator) {
+      FilterOperator.equals => actual == expected,
+      FilterOperator.notEquals => actual != expected,
+      FilterOperator.greaterThan => actual > expected,
+      FilterOperator.lessThan => actual < expected,
+      FilterOperator.greaterOrEqual => actual >= expected,
+      FilterOperator.lessOrEqual => actual <= expected,
+      _ => false,
+    };
+  }
+
+  /// String matching — only considers `String` runtime values.
+  static bool _checkString(dynamic raw, SearchFilter filter) {
+    if (raw is! String) return false;
+    return _compareStrings(raw, filter.value, filter.operator,
+        caseSensitive: filter.caseSensitive);
+  }
+
+  /// Loose matching — converts [raw] to string regardless of type.
+  static bool _checkAny(dynamic raw, SearchFilter filter) {
+    if (raw == null && filter.valueType == ValueType.any) {
+      return _compareStrings('null', filter.value, filter.operator,
+          caseSensitive: filter.caseSensitive);
+    }
+    if (raw is Map) return false;
+    return _compareStrings(raw.toString(), filter.value, filter.operator,
+        caseSensitive: filter.caseSensitive);
+  }
+
+  static bool _compareStrings(
+    String actual,
+    String expected,
+    FilterOperator op, {
+    required bool caseSensitive,
+  }) {
+    final a = caseSensitive ? actual : actual.toLowerCase();
+    final e = caseSensitive ? expected : expected.toLowerCase();
+    return switch (op) {
+      FilterOperator.contains => a.contains(e),
+      FilterOperator.equals => a == e,
+      FilterOperator.notEquals => a != e,
+      FilterOperator.startsWith => a.startsWith(e),
+      FilterOperator.endsWith => a.endsWith(e),
+      _ => false, // numeric operators not valid for strings
+    };
   }
 
   // ---------------------------------------------------------------------------
   // Path-context helpers
   // ---------------------------------------------------------------------------
 
-  /// Returns `true` when every element of [segments] appears in [path]'s
-  /// parsed tokens in order.
-  ///
-  /// Example: path `$.apis[0]` → tokens `[$, apis, [0]]`
-  ///          segments `[apis]` → found in order → `true`
-  ///          segments `[users]` → not found → `false`
   static bool _pathContainsSegments(String path, List<String> segments) {
     if (segments.isEmpty) return true;
     final tokens = _tokenisePath(path);
@@ -101,9 +170,6 @@ abstract final class JsonObjectFilter {
     return false;
   }
 
-  /// Splits a JSON-path string into individual tokens.
-  ///
-  /// `$.apis[0].contact[1]` → `[$, apis, [0], contact, [1]]`
   static List<String> _tokenisePath(String path) {
     final tokens = <String>[];
     for (final segment in path.split('.')) {
@@ -121,15 +187,6 @@ abstract final class JsonObjectFilter {
     return tokens;
   }
 
-  // ---------------------------------------------------------------------------
-  // Value helpers
-  // ---------------------------------------------------------------------------
-
-  /// Resolves a **simple** (non-dotted) [key] from [data].
-  ///
-  /// Looks up [data] directly first, then falls back one level into nested
-  /// objects and arrays so that a filter like `email` can still match
-  /// `{ "contact": { "email": "…" } }` when the user hasn't used a dotted path.
   static dynamic _resolveSimple(dynamic data, String key) {
     if (data is Map<String, dynamic>) {
       if (data.containsKey(key)) return data[key];
@@ -149,28 +206,5 @@ abstract final class JsonObjectFilter {
       }
     }
     return null;
-  }
-
-  /// Recursively checks whether [raw] satisfies [filter].
-  ///
-  /// Lists are flattened: the condition passes if ANY element passes.
-  /// Map values never match (use a dotted path to navigate into them).
-  static bool _checkValue(dynamic raw, SearchFilter filter) {
-    if (raw == null) return false;
-    if (raw is List) return raw.any((item) => _checkValue(item, filter));
-    if (raw is Map) return false;
-    return _compare(raw.toString(), filter.value, filter.operator);
-  }
-
-  static bool _compare(String actual, String expected, FilterOperator op) {
-    final a = actual.toLowerCase();
-    final e = expected.toLowerCase();
-    return switch (op) {
-      FilterOperator.contains => a.contains(e),
-      FilterOperator.equals => a == e,
-      FilterOperator.notEquals => a != e,
-      FilterOperator.startsWith => a.startsWith(e),
-      FilterOperator.endsWith => a.endsWith(e),
-    };
   }
 }

@@ -6,6 +6,43 @@ import '../../../core/constants/app_dimensions.dart';
 import '../../../core/utils/json_key_collector.dart';
 import '../models/search_filter.dart';
 
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
+Color _typeColor(ValueType type) => switch (type) {
+      ValueType.string => AppColors.jsonString,
+      ValueType.number => AppColors.jsonNumber,
+      ValueType.boolean => AppColors.jsonBoolean,
+      ValueType.nullValue => AppColors.jsonNull,
+      ValueType.any => AppColors.textMuted,
+    };
+
+Widget _chipValueText(SearchFilter filter) {
+  if (filter.valueType == ValueType.nullValue) {
+    return Text(
+      'null',
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: AppDimensions.fontSizeS,
+        color: AppColors.jsonNull,
+        fontStyle: FontStyle.italic,
+      ),
+    );
+  }
+  final color = filter.valueType == ValueType.number
+      ? AppColors.jsonNumber
+      : filter.valueType == ValueType.boolean
+          ? AppColors.jsonBoolean
+          : AppColors.jsonString;
+  return Text(
+    '"${filter.value}"',
+    style: GoogleFonts.jetBrainsMono(
+      fontSize: AppDimensions.fontSizeS,
+      color: color,
+    ),
+  );
+}
+
 /// Filter bar for structured key-value object search.
 ///
 /// Displays [SearchFilter] chips and provides an inline form for adding new
@@ -164,13 +201,29 @@ class _FilterChip extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                '"${filter.value}"',
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: AppDimensions.fontSizeS,
-                  color: AppColors.jsonString,
+              _chipValueText(filter),
+              if (filter.valueType != ValueType.any) ...[
+                const SizedBox(width: 4),
+                Text(
+                  filter.valueType.label,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 9,
+                    color: _typeColor(filter.valueType),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
+              ],
+              if (filter.caseSensitive) ...[
+                const SizedBox(width: 3),
+                Text(
+                  'Aa',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 9,
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
               const SizedBox(width: 4),
               GestureDetector(
                 onTap: onRemove,
@@ -309,7 +362,9 @@ class _AddConditionFormState extends State<_AddConditionForm> {
   final TextEditingController _valueController = TextEditingController();
   final FocusNode _valueFocus = FocusNode();
 
+  ValueType _valueType = ValueType.any;
   FilterOperator _operator = FilterOperator.contains;
+  bool _caseSensitive = false;
   List<String> _valueSamples = [];
 
   @override
@@ -341,16 +396,34 @@ class _AddConditionFormState extends State<_AddConditionForm> {
     _valueFocus.requestFocus();
   }
 
+  void _setValueType(ValueType type) {
+    setState(() {
+      _valueType = type;
+      // Reset operator to first available for the new type.
+      final ops = type.availableOperators;
+      if (!ops.contains(_operator)) _operator = ops.first;
+      // Pre-fill boolean value with 'true' for convenience.
+      if (type == ValueType.boolean && _valueController.text.isEmpty) {
+        _valueController.text = 'true';
+      }
+      // Null type needs no value — clear input.
+      if (type == ValueType.nullValue) _valueController.clear();
+    });
+  }
+
   bool get _canSubmit =>
       _keyController.text.trim().isNotEmpty &&
-      _valueController.text.trim().isNotEmpty;
+      (_valueType == ValueType.nullValue ||
+          _valueController.text.trim().isNotEmpty);
 
   void _submit() {
     if (!_canSubmit) return;
     widget.onAdd(SearchFilter(
       key: _keyController.text.trim(),
       operator: _operator,
-      value: _valueController.text.trim(),
+      value: _valueType == ValueType.nullValue ? '' : _valueController.text.trim(),
+      valueType: _valueType,
+      caseSensitive: _caseSensitive,
     ));
   }
 
@@ -371,7 +444,7 @@ class _AddConditionFormState extends State<_AddConditionForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Step 1: Key autocomplete ──────────────────────────────────
+          // ── Step 1: Key ───────────────────────────────────────────────
           const _SectionLabel(label: 'Key'),
           const SizedBox(height: 4),
           _KeyAutocomplete(
@@ -382,28 +455,91 @@ class _AddConditionFormState extends State<_AddConditionForm> {
             onSubmit: () => _valueFocus.requestFocus(),
           ),
           const SizedBox(height: AppDimensions.paddingS),
-          // ── Step 2: Operator selector ─────────────────────────────────
+          // ── Step 2: Value type ────────────────────────────────────────
+          const _SectionLabel(label: 'Type'),
+          const SizedBox(height: 4),
+          _ValueTypeSelector(
+            selected: _valueType,
+            onChanged: _setValueType,
+          ),
+          const SizedBox(height: AppDimensions.paddingS),
+          // ── Step 3: Operator (adapts to type) ─────────────────────────
           const _SectionLabel(label: 'Operator'),
           const SizedBox(height: 4),
           _OperatorSelector(
             selected: _operator,
+            available: _valueType.availableOperators,
             onChanged: (op) => setState(() => _operator = op),
           ),
           const SizedBox(height: AppDimensions.paddingS),
-          // ── Step 3: Value input ───────────────────────────────────────
-          const _SectionLabel(label: 'Value'),
-          const SizedBox(height: 4),
-          _ValueInput(
-            controller: _valueController,
-            focusNode: _valueFocus,
-            samples: _valueSamples,
-            onSampleTap: (s) {
-              _valueController.text = s;
-              _valueController.selection =
-                  TextSelection.collapsed(offset: s.length);
-            },
-            onSubmit: _submit,
-          ),
+          // ── Step 4: Value input (adapts to type) ──────────────────────
+          if (_valueType != ValueType.nullValue) ...[
+            Row(
+              children: [
+                const _SectionLabel(label: 'Value'),
+                const Spacer(),
+                if (_valueType == ValueType.string ||
+                    _valueType == ValueType.any)
+                  _CaseSensitiveToggle(
+                    value: _caseSensitive,
+                    onChanged: (v) => setState(() => _caseSensitive = v),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (_valueType == ValueType.boolean)
+              _BooleanToggle(
+                value: _valueController.text == 'true',
+                onChanged: (v) {
+                  _valueController.text = v ? 'true' : 'false';
+                },
+              )
+            else
+              _ValueInput(
+                controller: _valueController,
+                focusNode: _valueFocus,
+                samples: _valueType == ValueType.number ||
+                        _valueType == ValueType.any
+                    ? _valueSamples
+                    : _valueSamples
+                        .where((s) =>
+                            double.tryParse(s) == null &&
+                            s != 'true' &&
+                            s != 'false' &&
+                            s != 'null')
+                        .toList(),
+                keyboardType: _valueType == ValueType.number
+                    ? const TextInputType.numberWithOptions(decimal: true)
+                    : TextInputType.text,
+                onSampleTap: (s) {
+                  _valueController.text = s;
+                  _valueController.selection =
+                      TextSelection.collapsed(offset: s.length);
+                },
+                onSubmit: _submit,
+              ),
+          ] else ...[
+            const _SectionLabel(label: 'Value'),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius:
+                    BorderRadius.circular(AppDimensions.radiusS),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Text(
+                'Matches fields whose value is null',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: AppDimensions.fontSizeS,
+                  color: AppColors.textMuted,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: AppDimensions.paddingM),
           // ── Actions ───────────────────────────────────────────────────
           Row(
@@ -589,17 +725,124 @@ class _KeyAutocomplete extends StatelessWidget {
 // Operator selector
 // ---------------------------------------------------------------------------
 
-class _OperatorSelector extends StatelessWidget {
-  final FilterOperator selected;
-  final ValueChanged<FilterOperator> onChanged;
+// ---------------------------------------------------------------------------
+// Value-type selector
+// ---------------------------------------------------------------------------
 
-  const _OperatorSelector({required this.selected, required this.onChanged});
+class _ValueTypeSelector extends StatelessWidget {
+  final ValueType selected;
+  final ValueChanged<ValueType> onChanged;
+
+  const _ValueTypeSelector({required this.selected, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return Wrap(
       spacing: 4,
-      children: FilterOperator.values.map((op) {
+      children: ValueType.values.map((type) {
+        final isSelected = type == selected;
+        final color = _typeColor(type);
+        return GestureDetector(
+          onTap: () => onChanged(type),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: isSelected ? color.withValues(alpha: 0.18) : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              border: Border.all(
+                color: isSelected ? color : AppColors.border,
+              ),
+            ),
+            child: Text(
+              type.label,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                color: isSelected ? color : AppColors.textSecondary,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Boolean toggle
+// ---------------------------------------------------------------------------
+
+class _BooleanToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _BooleanToggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _boolChip(label: 'true', selected: value, onTap: () => onChanged(true)),
+        const SizedBox(width: 6),
+        _boolChip(label: 'false', selected: !value, onTap: () => onChanged(false)),
+      ],
+    );
+  }
+
+  Widget _boolChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.jsonBoolean.withValues(alpha: 0.18)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+          border: Border.all(
+            color: selected ? AppColors.jsonBoolean : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: AppDimensions.fontSizeS,
+            color: selected ? AppColors.jsonBoolean : AppColors.textSecondary,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Operator selector
+// ---------------------------------------------------------------------------
+
+class _OperatorSelector extends StatelessWidget {
+  final FilterOperator selected;
+  final List<FilterOperator> available;
+  final ValueChanged<FilterOperator> onChanged;
+
+  const _OperatorSelector({
+    required this.selected,
+    required this.available,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 4,
+      children: available.map((op) {
         final isSelected = op == selected;
         return GestureDetector(
           onTap: () => onChanged(op),
@@ -641,6 +884,7 @@ class _ValueInput extends StatelessWidget {
   final List<String> samples;
   final ValueChanged<String> onSampleTap;
   final VoidCallback onSubmit;
+  final TextInputType keyboardType;
 
   const _ValueInput({
     required this.controller,
@@ -648,6 +892,7 @@ class _ValueInput extends StatelessWidget {
     required this.samples,
     required this.onSampleTap,
     required this.onSubmit,
+    this.keyboardType = TextInputType.text,
   });
 
   @override
@@ -658,6 +903,7 @@ class _ValueInput extends StatelessWidget {
         TextField(
           controller: controller,
           focusNode: focusNode,
+          keyboardType: keyboardType,
           onSubmitted: (_) => onSubmit(),
           style: GoogleFonts.jetBrainsMono(
             fontSize: AppDimensions.fontSizeS,
@@ -718,6 +964,52 @@ class _ValueInput extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Case-sensitive toggle
+// ---------------------------------------------------------------------------
+
+/// Small `Aa` toggle that appears next to the Value label.
+class _CaseSensitiveToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _CaseSensitiveToggle({
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: Tooltip(
+        message: value ? 'Case-sensitive: ON' : 'Case-sensitive: OFF',
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: value
+                ? AppColors.primary.withValues(alpha: 0.18)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+            border: Border.all(
+              color: value ? AppColors.primary : AppColors.border,
+            ),
+          ),
+          child: Text(
+            'Aa',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 11,
+              color: value ? AppColors.primary : AppColors.textMuted,
+              fontWeight: value ? FontWeight.w700 : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

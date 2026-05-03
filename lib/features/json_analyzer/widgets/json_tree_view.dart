@@ -880,15 +880,16 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     // In path-list mode the results replace the tree view.
     final List<String>? pathResults = _pathListMode ? searchPaths : null;
 
-    // Object filter results — shown as path-list only while _filterShowList
-    // is true. Clicking a result sets _filterShowList=false to switch to tree.
-    final List<String>? filterResults =
-        (_isFilterMode &&
-            _filterShowList &&
-            _filterConditions.isNotEmpty &&
-            parsedData != null)
+    // Compute whenever conditions exist so the badge always shows result count —
+    // regardless of whether the filter panel is open or closed.
+    final List<String>? filterMatches =
+        (_filterConditions.isNotEmpty && parsedData != null)
         ? JsonObjectFilter.findMatching(parsedData, _filterConditions)
         : null;
+
+    // Show as path-list only when filter mode is active AND _filterShowList=true.
+    final List<String>? filterResults =
+        (_isFilterMode && _filterShowList) ? filterMatches : null;
 
     return Focus(
       autofocus: false,
@@ -915,7 +916,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildHeader(context, filterResultCount: filterResults?.length),
+            _buildHeader(context, filterResultCount: filterMatches?.length),
             if (_isSearchVisible)
               _buildSearchBar(searchPaths: searchPaths, parsedData: parsedData),
             if (_isFilterMode)
