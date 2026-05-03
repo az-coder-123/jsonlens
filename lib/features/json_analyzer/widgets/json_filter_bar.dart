@@ -101,6 +101,12 @@ class _JsonFilterBarState extends State<JsonFilterBar> {
     }
   }
 
+  void _toggle(int index) {
+    final updated = [...widget.filters];
+    updated[index] = updated[index].toggleEnabled();
+    widget.onFiltersChanged(updated);
+  }
+
   void _clearAll() {
     widget.onFiltersChanged(const []);
     setState(() {
@@ -166,6 +172,7 @@ class _JsonFilterBarState extends State<JsonFilterBar> {
                         total: widget.filters.length,
                         isEditing: _editingIndex == e.key && _showForm,
                         onEdit: () => _startEdit(e.key),
+                        onToggle: () => _toggle(e.key),
                         onRemove: () => _remove(e.key),
                       ),
                     ),
@@ -219,6 +226,7 @@ class _FilterChip extends StatelessWidget {
   final int total;
   final bool isEditing;
   final VoidCallback onEdit;
+  final VoidCallback onToggle;
   final VoidCallback onRemove;
 
   const _FilterChip({
@@ -227,6 +235,7 @@ class _FilterChip extends StatelessWidget {
     required this.total,
     required this.isEditing,
     required this.onEdit,
+    required this.onToggle,
     required this.onRemove,
   });
 
@@ -243,89 +252,111 @@ class _FilterChip extends StatelessWidget {
               'AND',
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 10,
-                color: AppColors.textMuted,
+                color: filter.enabled
+                    ? AppColors.textMuted
+                    : AppColors.textMuted.withValues(alpha: 0.4),
                 fontWeight: FontWeight.w600,
               ),
             ),
           ),
-        GestureDetector(
-          onTap: onEdit,
-          child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: isEditing
-                ? AppColors.primary.withValues(alpha: 0.22)
-                : AppColors.primary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-            border: Border.all(
-              color: isEditing
-                  ? AppColors.primary
-                  : AppColors.primary.withValues(alpha: 0.4),
-              width: isEditing ? 1.5 : 1.0,
+        Opacity(
+          opacity: filter.enabled ? 1.0 : 0.45,
+          child: GestureDetector(
+            onTap: onEdit,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: isEditing
+                    ? AppColors.primary.withValues(alpha: 0.22)
+                    : AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                border: Border.all(
+                  color: isEditing
+                      ? AppColors.primary
+                      : AppColors.primary.withValues(alpha: 0.4),
+                  width: isEditing ? 1.5 : 1.0,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Toggle on/off button.
+                  GestureDetector(
+                    onTap: onToggle,
+                    child: Tooltip(
+                      message: filter.enabled ? 'Disable condition' : 'Enable condition',
+                      child: Icon(
+                        filter.enabled
+                            ? Icons.toggle_on
+                            : Icons.toggle_off,
+                        size: 16,
+                        color: filter.enabled
+                            ? AppColors.primary
+                            : AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  if (isEditing) ...[
+                    const Icon(Icons.edit, size: 10, color: AppColors.primary),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    filter.key,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: AppDimensions.fontSizeS,
+                      color: AppColors.jsonKey,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      filter.operator.label,
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 10,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  _chipValueText(filter),
+                  if (filter.valueType != ValueType.any) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      filter.valueType.label,
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 9,
+                        color: _typeColor(filter.valueType),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  if (filter.caseSensitive) ...[
+                    const SizedBox(width: 3),
+                    Text(
+                      'Aa',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 9,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: onRemove,
+                    child: const Icon(
+                      Icons.close,
+                      size: 12,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isEditing) ...[
-                const Icon(Icons.edit, size: 10, color: AppColors.primary),
-                const SizedBox(width: 4),
-              ],
-              Text(
-                filter.key,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: AppDimensions.fontSizeS,
-                  color: AppColors.jsonKey,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  filter.operator.label,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 10,
-                    color: AppColors.textMuted,
-                  ),
-                ),
-              ),
-              _chipValueText(filter),
-              if (filter.valueType != ValueType.any) ...[
-                const SizedBox(width: 4),
-                Text(
-                  filter.valueType.label,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 9,
-                    color: _typeColor(filter.valueType),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-              if (filter.caseSensitive) ...[
-                const SizedBox(width: 3),
-                Text(
-                  'Aa',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 9,
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-              const SizedBox(width: 4),
-              GestureDetector(
-                onTap: onRemove,
-                child: const Icon(
-                  Icons.close,
-                  size: 12,
-                  color: AppColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-        ), // closes GestureDetector(onTap: onEdit)
+        ), // closes Opacity
       ],
     );
   }

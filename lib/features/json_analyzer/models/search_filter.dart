@@ -17,6 +17,9 @@ class SearchFilter {
   /// Only used when [dateTimeFormat] is [DateTimeFormat.custom].
   final String customDatePattern;
 
+  /// When `false` this condition is skipped during matching but kept in the list.
+  final bool enabled;
+
   const SearchFilter({
     required this.key,
     required this.operator,
@@ -25,7 +28,20 @@ class SearchFilter {
     this.caseSensitive = false,
     this.dateTimeFormat = DateTimeFormat.iso8601,
     this.customDatePattern = '',
+    this.enabled = true,
   });
+
+  /// Returns a copy with [enabled] toggled.
+  SearchFilter toggleEnabled() => SearchFilter(
+        key: key,
+        operator: operator,
+        value: value,
+        valueType: valueType,
+        caseSensitive: caseSensitive,
+        dateTimeFormat: dateTimeFormat,
+        customDatePattern: customDatePattern,
+        enabled: !enabled,
+      );
 
   @override
   bool operator ==(Object other) =>
@@ -36,12 +52,13 @@ class SearchFilter {
       other.valueType == valueType &&
       other.caseSensitive == caseSensitive &&
       other.dateTimeFormat == dateTimeFormat &&
-      other.customDatePattern == customDatePattern;
+      other.customDatePattern == customDatePattern &&
+      other.enabled == enabled;
 
   @override
   int get hashCode => Object.hash(
       key, operator, value, valueType, caseSensitive, dateTimeFormat,
-      customDatePattern);
+      customDatePattern, enabled);
 
   @override
   String toString() {

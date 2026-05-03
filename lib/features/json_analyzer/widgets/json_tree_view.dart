@@ -296,7 +296,12 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         _clearSearch();
       }
       // Reset to list view whenever the panel is reopened.
-      if (_isFilterMode) _filterShowList = true;
+      if (_isFilterMode) {
+        _filterShowList = true;
+        // Clear path-list mode so a stale text-search state does not shadow
+        // filter results in _buildContent.
+        _pathListMode = false;
+      }
       // Conditions are intentionally kept when closing so the badge reflects
       // active filters and they reappear when the panel is reopened.
     });
@@ -877,8 +882,14 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         ? _filteredPaths(parsedData)
         : const [];
 
-    // In path-list mode the results replace the tree view.
-    final List<String>? pathResults = _pathListMode ? searchPaths : null;
+    // In path-list mode the results replace the tree view, but only when text
+    // search is actually active (visible + non-empty). Without this guard,
+    // a stale _pathListMode=true from a previous search would produce a
+    // non-null empty list that shadows filter results.
+    final List<String>? pathResults =
+        (_pathListMode && _isSearchVisible && _searchQuery.isNotEmpty)
+        ? searchPaths
+        : null;
 
     // Compute whenever conditions exist so the badge always shows result count —
     // regardless of whether the filter panel is open or closed.

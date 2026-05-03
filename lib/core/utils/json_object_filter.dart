@@ -12,9 +12,11 @@ abstract final class JsonObjectFilter {
     List<SearchFilter> filters, {
     String prefix = r'$',
   }) {
-    if (filters.isEmpty) return const [];
+    // Only apply enabled conditions; if none are active return empty.
+    final active = filters.where((f) => f.enabled).toList();
+    if (active.isEmpty) return const [];
     final results = <String>[];
-    _traverse(data, filters, prefix, results);
+    _traverse(data, active, prefix, results);
     return results;
   }
 
@@ -56,12 +58,37 @@ abstract final class JsonObjectFilter {
     }
 
     final parts = key.split('.');
-    final lastKey = parts.last;
-    final prefixSegments = parts.sublist(0, parts.length - 1);
+    final pathTokens = _tokenisePath(nodePath);
 
-    if (!_pathContainsSegments(nodePath, prefixSegments)) return false;
-    if (!obj.containsKey(lastKey)) return false;
-    return _checkValue(obj[lastKey], filter);
+    // Count how many leading [parts] are already "consumed" by [pathTokens]
+    // (matched in order). These represent path context already in the node's
+    // own location — e.g. for a product at `$.products[0]` and key
+    // `products.reviews.date`, only `"products"` is consumed (index 1),
+    // leaving `"reviews.date"` to be resolved from the node's own properties.
+    int consumed = 0;
+    int tokenIdx = 0;
+    for (int i = 0; i < parts.length; i++) {
+      bool found = false;
+      for (int j = tokenIdx; j < pathTokens.length; j++) {
+        if (pathTokens[j] == parts[i]) {
+          tokenIdx = j + 1;
+          consumed = i + 1;
+          found = true;
+          break;
+        }
+      }
+      if (!found) break;
+    }
+
+    // At least one segment must be consumed (node must be in context).
+    if (consumed == 0) return false;
+    // There must be at least one segment left to evaluate on the node.
+    if (consumed >= parts.length) return false;
+
+    // Resolve remaining segments from the node, flattening through arrays.
+    final remaining = parts.sublist(consumed).join('.');
+    final resolved = _resolveNestedPath(obj, remaining);
+    return _checkValue(resolved, filter);
   }
 
   // ---------------------------------------------------------------------------
@@ -229,17 +256,35 @@ abstract final class JsonObjectFilter {
   // Path-context helpers
   // ---------------------------------------------------------------------------
 
-  static bool _pathContainsSegments(String path, List<String> segments) {
-    if (segments.isEmpty) return true;
-    final tokens = _tokenisePath(path);
-    int si = 0;
-    for (final token in tokens) {
-      if (token == segments[si]) {
-        si++;
-        if (si == segments.length) return true;
+  /// Resolves a (possibly dotted) [key] from [data], flattening through Lists.
+  ///
+  /// When a segment resolves to a List, the remaining segments are applied to
+  /// every Map element and primitives are collected into a flat list — enabling
+  /// `reviews.date` on a product object to return all review dates at once.
+  static dynamic _resolveNestedPath(dynamic data, String key) {
+    dynamic cur = data;
+    for (final part in key.split('.')) {
+      if (cur == null) return null;
+      if (cur is Map<String, dynamic>) {
+        cur = cur[part];
+      } else if (cur is List) {
+        final collected = <dynamic>[];
+        for (final item in cur) {
+          if (item is Map<String, dynamic>) {
+            final v = item[part];
+            if (v is List) {
+              collected.addAll(v);
+            } else if (v != null) {
+              collected.add(v);
+            }
+          }
+        }
+        cur = collected.isEmpty ? null : collected;
+      } else {
+        return null;
       }
     }
-    return false;
+    return cur;
   }
 
   static List<String> _tokenisePath(String path) {
