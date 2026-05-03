@@ -100,7 +100,17 @@ class _LazyNodeState extends State<_LazyNode> {
   }
 
   bool _computeExpanded() {
-    // When a search is active, auto-expand nodes whose subtree contains a match.
+    // Ancestor paths forced open for editor→tree sync take highest priority,
+    // so cursor navigation can reveal a node even in "Collapse All" mode.
+    if (widget.forcedExpandedPaths.contains(widget.path)) return true;
+
+    // Explicit Expand All / Collapse All commands override everything else —
+    // including search auto-expansion — so the user always gets the expected
+    // result when pressing these buttons regardless of an active query.
+    if (widget.forceExpandAll != null) return widget.forceExpandAll!;
+
+    // When a search is active and no explicit command was issued, auto-expand
+    // nodes whose subtree contains a match so results are immediately visible.
     if (widget.searchQuery.isNotEmpty) {
       return _matchesSearch(
         widget.keyName,
@@ -109,12 +119,7 @@ class _LazyNodeState extends State<_LazyNode> {
         widget.searchScope,
       );
     }
-    // Force-expand specific ancestor paths for editor→tree sync.
-    // Checked before forceExpandAll so that cursor navigation in the editor
-    // can reveal a node even when the tree is in "Collapse All" mode.
-    if (widget.forcedExpandedPaths.contains(widget.path)) return true;
-    // Honour programmatic expand/collapse signal.
-    if (widget.forceExpandAll != null) return widget.forceExpandAll!;
+
     // Fall back to depth-based default.
     return widget.depth < widget.defaultExpandedDepth;
   }
@@ -224,6 +229,26 @@ class _LazyNodeState extends State<_LazyNode> {
 
   Widget _buildValuePreview() {
     final v = widget.value;
+    final textWidget = _buildValueText(v);
+
+    // Show match count badge on collapsed container nodes when search is active.
+    if (!_expanded && widget.searchQuery.isNotEmpty && (v is Map || v is List)) {
+      final count = _subtreeMatchCount(v, widget.searchQuery, widget.searchScope);
+      if (count > 0) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: textWidget),
+            const SizedBox(width: 6),
+            _buildSearchMatchBadge(count: count),
+          ],
+        );
+      }
+    }
+    return textWidget;
+  }
+
+  Widget _buildValueText(dynamic v) {
     if (v is Map) {
       final len = v.length;
       return Text(
@@ -243,6 +268,25 @@ class _LazyNodeState extends State<_LazyNode> {
       );
     }
     return _buildHighlightedText(_scalarText(v), _valueQuery, _valueStyle(v));
+  }
+
+  /// Small pill badge showing how many nodes in a subtree match the current search.
+  static Widget _buildSearchMatchBadge({required int count}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppColors.searchHighlight.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '$count',
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 10,
+          color: AppColors.searchHighlight,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
   }
 
   // -------------------------------------------------------------------------

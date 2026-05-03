@@ -66,6 +66,41 @@ bool _matchesSearch(
   return false;
 }
 
+/// Counts all nodes in [data] whose key or leaf value directly matches [query]
+/// under [scope]. Does not count container nodes themselves — only direct hits.
+int _subtreeMatchCount(dynamic data, String query, SearchScope scope) {
+  if (query.isEmpty) return 0;
+  final q = query.toLowerCase();
+  int count = 0;
+
+  if (data is Map<String, dynamic>) {
+    for (final entry in data.entries) {
+      final checkKeys = scope != SearchScope.valuesOnly;
+      final checkValues = scope != SearchScope.keysOnly;
+      if (checkKeys && entry.key.toLowerCase().contains(q)) count++;
+      if (checkValues &&
+          entry.value is! Map &&
+          entry.value is! List &&
+          entry.value.toString().toLowerCase().contains(q)) {
+        count++;
+      }
+      count += _subtreeMatchCount(entry.value, query, scope);
+    }
+  } else if (data is List) {
+    for (int i = 0; i < data.length; i++) {
+      final checkValues = scope != SearchScope.keysOnly;
+      if (checkValues &&
+          data[i] is! Map &&
+          data[i] is! List &&
+          data[i].toString().toLowerCase().contains(q)) {
+        count++;
+      }
+      count += _subtreeMatchCount(data[i], query, scope);
+    }
+  }
+  return count;
+}
+
 /// Builds a widget that highlights [query] within [text] using the given [style].
 Widget _buildHighlightedText(String text, String query, TextStyle style) {
   if (query.isEmpty) {
