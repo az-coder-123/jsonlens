@@ -11,12 +11,16 @@ import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/performance_constants.dart';
 import '../../../core/settings/settings_provider.dart';
+import '../../../core/utils/json_key_collector.dart';
+import '../../../core/utils/json_object_filter.dart';
 import '../../../core/utils/json_path.dart';
 import '../../../core/utils/json_position_mapper.dart';
+import '../models/search_filter.dart';
 import '../providers/json_analyzer_provider.dart';
 import 'add_key_dialog.dart';
 import 'breadcrumb_bar.dart';
 import 'depth_dialog.dart';
+import 'json_filter_bar.dart';
 import 'lazy_json_tree.dart';
 import 'processing_overlay.dart';
 import 'type_filter_bar.dart';
@@ -140,6 +144,25 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   /// Types currently hidden. Values: 'object','array','string','number','boolean','null'.
   final Set<String> _hiddenTypes = {};
 
+  // ---- Object filter mode ----
+
+  /// When `true`, the structured key-value filter bar is shown instead of the
+  /// plain text search bar.
+  bool _isFilterMode = false;
+
+  /// Active filter conditions (AND semantics).
+  List<SearchFilter> _filterConditions = [];
+
+  /// When `true`, filter results are displayed as a flat path-list.
+  /// Set to `false` after the user clicks a result to switch to tree view.
+  /// Resets to `true` whenever [_filterConditions] changes.
+  bool _filterShowList = true;
+
+  /// Cached key suggestions built from the current parsed data.
+  /// Recomputed whenever [parsedData] changes.
+  List<KeySuggestion> _keySuggestions = [];
+  String _lastKeySuggestionInput = '';
+
   // ---- Search enhancements ----
 
   /// Index of the currently highlighted result in the path-list. -1 = none.
@@ -258,6 +281,35 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
       Duration(milliseconds: _searchDebounceMs()),
       _applySearchQuery,
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Filter mode
+  // -------------------------------------------------------------------------
+
+  void _toggleFilterMode() {
+    setState(() {
+      _isFilterMode = !_isFilterMode;
+      // Deactivate text search when switching to filter mode.
+      if (_isFilterMode && _isSearchVisible) {
+        _isSearchVisible = false;
+        _clearSearch();
+      }
+      // Reset to list view whenever the panel is reopened.
+      if (_isFilterMode) _filterShowList = true;
+      // Conditions are intentionally kept when closing so the badge reflects
+      // active filters and they reappear when the panel is reopened.
+    });
+  }
+
+  /// Returns cached key suggestions, recomputing if the JSON input changed.
+  List<KeySuggestion> _getKeySuggestions(dynamic parsedData) {
+    final raw = ref.read(inputProvider);
+    if (raw == _lastKeySuggestionInput) return _keySuggestions;
+    _lastKeySuggestionInput = raw;
+    _keySuggestions =
+        parsedData != null ? JsonKeyCollector.collect(parsedData) : const [];
+    return _keySuggestions;
   }
 
   void _setSearchScope(SearchScope scope) {
@@ -460,6 +512,19 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     setState(() {
       _selectedPath = path;
       _forcedExpandedPaths = _ancestorPaths(path);
+    });
+    _scheduleScrollToHighlighted();
+  }
+
+  /// Like [_updateSelectedPath] but also force-expands the target node itself.
+  ///
+  /// Used when navigating to a node from search/filter results: the clicked
+  /// node is typically a container (e.g. `$.apis[0]`) that should open and
+  /// reveal its children, not just be highlighted while staying collapsed.
+  void _expandAndSelectPath(String path) {
+    setState(() {
+      _selectedPath = path;
+      _forcedExpandedPaths = {..._ancestorPaths(path), path};
     });
     _scheduleScrollToHighlighted();
   }
@@ -815,6 +880,16 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     // In path-list mode the results replace the tree view.
     final List<String>? pathResults = _pathListMode ? searchPaths : null;
 
+    // Object filter results — shown as path-list only while _filterShowList
+    // is true. Clicking a result sets _filterShowList=false to switch to tree.
+    final List<String>? filterResults =
+        (_isFilterMode &&
+            _filterShowList &&
+            _filterConditions.isNotEmpty &&
+            parsedData != null)
+        ? JsonObjectFilter.findMatching(parsedData, _filterConditions)
+        : null;
+
     return Focus(
       autofocus: false,
       onKeyEvent: (node, event) {
@@ -840,9 +915,21 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildHeader(context),
+            _buildHeader(context, filterResultCount: filterResults?.length),
             if (_isSearchVisible)
               _buildSearchBar(searchPaths: searchPaths, parsedData: parsedData),
+            if (_isFilterMode)
+              JsonFilterBar(
+                keySuggestions: _getKeySuggestions(parsedData),
+                filters: _filterConditions,
+                showList: _filterShowList,
+                onFiltersChanged: (f) => setState(() {
+                  _filterConditions = f;
+                  _filterShowList = true; // reset to list when conditions change
+                }),
+                onToggleView: () =>
+                    setState(() => _filterShowList = !_filterShowList),
+              ),
             if (_isFilterVisible) _buildFilterBar(),
             if (_selectedPath.isNotEmpty) _buildBreadcrumbBar(),
             const Divider(height: 1),
@@ -853,7 +940,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
                     parsedData: parsedData,
                     isValid: isValid,
                     isEmpty: isEmpty,
-                    pathResults: pathResults,
+                    pathResults: filterResults ?? pathResults,
                   ),
                   if (isProcessing)
                     const ProcessingOverlay(
@@ -872,7 +959,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   // Header
   // -------------------------------------------------------------------------
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, {int? filterResultCount}) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingM,
@@ -903,6 +990,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
           const Spacer(),
           _buildExpandCollapseButtons(),
           _buildSearchToggleButton(),
+          _buildObjectFilterButton(resultCount: filterResultCount),
           _buildFilterButton(),
           _buildSortKeysButton(),
           _buildSettingsButton(context),
@@ -950,6 +1038,30 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
         color: _isSearchVisible ? AppColors.primary : AppColors.textSecondary,
       ),
       onPressed: _toggleSearch,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+    );
+  }
+
+  Widget _buildObjectFilterButton({int? resultCount}) {
+    final active = _isFilterMode;
+    // Show result count when available; fall back to conditions count so the
+    // badge is always visible whenever conditions are active.
+    final badgeCount = resultCount ?? _filterConditions.length;
+    final showBadge = _filterConditions.isNotEmpty;
+    return IconButton(
+      tooltip: active ? 'Close object filter' : 'Filter by key-value conditions',
+      icon: Badge(
+        isLabelVisible: showBadge,
+        label: Text('$badgeCount'),
+        backgroundColor: AppColors.primary,
+        child: Icon(
+          Icons.manage_search,
+          size: AppDimensions.iconSizeS,
+          color: active ? AppColors.primary : AppColors.textSecondary,
+        ),
+      ),
+      onPressed: _toggleFilterMode,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
     );
@@ -1511,12 +1623,13 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   ) {
     return InkWell(
       onTap: () {
-        // Switch to tree view and scroll to the highlighted node.
+        // Switch to tree view, expand the target node, and scroll to it.
         setState(() {
           _currentResultIndex = index;
           _pathListMode = false;
+          _filterShowList = false; // hide filter path-list, show tree
         });
-        _updateSelectedPath(path);
+        _expandAndSelectPath(path);
         final line = _getMapper()?.lineForPath(path);
         if (line != null) {
           ref.read(treeSelectedPathProvider.notifier).state = path;
