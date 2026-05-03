@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/performance_constants.dart';
 import '../../../core/settings/settings_provider.dart';
 import '../../../core/utils/json_path.dart';
 import '../../../core/utils/json_position_mapper.dart';
@@ -89,6 +91,7 @@ class JsonTreeViewWidget extends ConsumerStatefulWidget {
 
 class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounceTimer;
 
   String _searchQuery = '';
   String _selectedPath = '';
@@ -139,6 +142,7 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchDebounceTimer?.cancel();
     _treeScrollController.dispose();
     super.dispose();
   }
@@ -167,10 +171,42 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   void _toggleFilter() => setState(() => _isFilterVisible = !_isFilterVisible);
 
   void _clearSearch() {
+    _searchDebounceTimer?.cancel();
     setState(() {
       _searchQuery = '';
       _searchController.clear();
       _pathListMode = false;
+    });
+  }
+
+  int _searchDebounceMs() {
+    final inputSize = ref.read(inputSizeProvider);
+    return inputSize > PerformanceConstants.processingIndicatorThreshold
+        ? PerformanceConstants.largeInputDebounceMs
+        : PerformanceConstants.inputDebounceMs;
+  }
+
+  void _applySearchQuery() {
+    if (!mounted) return;
+    final next = _searchController.text;
+    if (next == _searchQuery) return;
+    setState(() => _searchQuery = next);
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(
+      Duration(milliseconds: _searchDebounceMs()),
+      _applySearchQuery,
+    );
+  }
+
+  void _setSearchScope(SearchScope scope) {
+    _searchDebounceTimer?.cancel();
+    final next = _searchController.text;
+    setState(() {
+      _searchScope = scope;
+      _searchQuery = next;
     });
   }
 
@@ -766,43 +802,59 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                   ),
-                  onChanged: (value) => setState(() => _searchQuery = value),
+                  onChanged: _onSearchChanged,
                 ),
               ),
               // Right-side action group.
               const SizedBox(width: 8),
-              // Match count pill (path-list mode only).
-              if (matchCount != null) ...[
-                _SearchCountBadge(count: matchCount),
-                const SizedBox(width: 6),
-              ],
-              // Clear button.
-              if (_searchQuery.isNotEmpty) ...[
-                _SearchIconBtn(
-                  icon: Icons.close,
-                  tooltip: 'Clear',
-                  onTap: _clearSearch,
-                  active: false,
-                ),
-                const SizedBox(width: 2),
-              ],
-              // Thin vertical divider.
-              Container(
-                width: 1,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                color: AppColors.border,
-              ),
-              // Toggle between tree view and path-list results.
-              _SearchIconBtn(
-                icon: _pathListMode
-                    ? Icons.account_tree
-                    : Icons.format_list_bulleted,
-                tooltip: _pathListMode
-                    ? 'Show tree view'
-                    : 'Show results as path list',
-                onTap: () => setState(() => _pathListMode = !_pathListMode),
-                active: _pathListMode,
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _searchController,
+                builder: (context, value, _) {
+                  final hasText = value.text.isNotEmpty;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (matchCount != null) ...[
+                        _SearchCountBadge(count: matchCount),
+                        const SizedBox(width: 6),
+                      ],
+                      if (hasText) ...[
+                        _SearchIconBtn(
+                          icon: Icons.close,
+                          tooltip: 'Clear',
+                          onTap: _clearSearch,
+                          active: false,
+                        ),
+                        const SizedBox(width: 2),
+                      ],
+                      // Thin vertical divider.
+                      Container(
+                        width: 1,
+                        height: 16,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        color: AppColors.border,
+                      ),
+                      // Toggle between tree view and path-list results.
+                      _SearchIconBtn(
+                        icon: _pathListMode
+                            ? Icons.account_tree
+                            : Icons.format_list_bulleted,
+                        tooltip: _pathListMode
+                            ? 'Show tree view'
+                            : 'Show results as path list',
+                        onTap: () {
+                          _searchDebounceTimer?.cancel();
+                          final next = _searchController.text;
+                          setState(() {
+                            _pathListMode = !_pathListMode;
+                            _searchQuery = next;
+                          });
+                        },
+                        active: _pathListMode,
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -820,22 +872,21 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
           label: 'Keys',
           icon: Icons.vpn_key_outlined,
           selected: _searchScope == SearchScope.keysOnly,
-          onSelected: () => setState(() => _searchScope = SearchScope.keysOnly),
+          onSelected: () => _setSearchScope(SearchScope.keysOnly),
         ),
         const SizedBox(width: 6),
         _ScopeChip(
           label: 'Both',
           icon: Icons.manage_search,
           selected: _searchScope == SearchScope.both,
-          onSelected: () => setState(() => _searchScope = SearchScope.both),
+          onSelected: () => _setSearchScope(SearchScope.both),
         ),
         const SizedBox(width: 6),
         _ScopeChip(
           label: 'Values',
           icon: Icons.text_fields,
           selected: _searchScope == SearchScope.valuesOnly,
-          onSelected: () =>
-              setState(() => _searchScope = SearchScope.valuesOnly),
+          onSelected: () => _setSearchScope(SearchScope.valuesOnly),
         ),
       ],
     );
