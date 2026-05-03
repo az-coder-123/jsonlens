@@ -75,9 +75,9 @@ _Showcase: concise, professional visual overview of key UI flows._
 | ![Show result as path list](screenshots/tree-view-01.png) | ![Show tree view](screenshots/tree-view-expanded.png) |
 | Quick editing, formatting, and clipboard actions. | Lazy, virtualized tree for exploring large JSON documents. |
 
-| Path Query Panel | Statistics Panel |
+| Http Request | Statistics Panel |
 |---|---|
-| ![Path query panel](screenshots/path-query.png) | ![Statistics panel](screenshots/statistics.png) |
+| ![Http Request](screenshots/http-request.png) | ![Statistics panel](screenshots/statistics.png) |
 | Query JSON paths and filter results. | View JSON statistics and metrics at a glance. |
 
 ---
