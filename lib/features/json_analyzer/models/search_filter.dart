@@ -13,6 +13,10 @@ class SearchFilter {
   /// Only relevant when [valueType] is [ValueType.datetime].
   final DateTimeFormat dateTimeFormat;
 
+  /// Custom `intl` DateFormat pattern (e.g. `dd/MM/yyyy HH:mm`).
+  /// Only used when [dateTimeFormat] is [DateTimeFormat.custom].
+  final String customDatePattern;
+
   const SearchFilter({
     required this.key,
     required this.operator,
@@ -20,6 +24,7 @@ class SearchFilter {
     this.valueType = ValueType.any,
     this.caseSensitive = false,
     this.dateTimeFormat = DateTimeFormat.iso8601,
+    this.customDatePattern = '',
   });
 
   @override
@@ -30,17 +35,21 @@ class SearchFilter {
       other.value == value &&
       other.valueType == valueType &&
       other.caseSensitive == caseSensitive &&
-      other.dateTimeFormat == dateTimeFormat;
+      other.dateTimeFormat == dateTimeFormat &&
+      other.customDatePattern == customDatePattern;
 
   @override
-  int get hashCode =>
-      Object.hash(key, operator, value, valueType, caseSensitive, dateTimeFormat);
+  int get hashCode => Object.hash(
+      key, operator, value, valueType, caseSensitive, dateTimeFormat,
+      customDatePattern);
 
   @override
   String toString() {
     final cs = caseSensitive ? ' [Aa]' : '';
     final dt = valueType == ValueType.datetime
-        ? ' [${dateTimeFormat.label}]'
+        ? dateTimeFormat == DateTimeFormat.custom
+            ? ' [$customDatePattern]'
+            : ' [${dateTimeFormat.label}]'
         : '';
     return 'SearchFilter($key ${operator.label} "$value" ${valueType.label}$cs$dt)';
   }
@@ -107,6 +116,11 @@ enum DateTimeFormat {
     'Unix (ms)',
     'Milliseconds since epoch',
     '1705276800000',
+  ),
+  custom(
+    'Custom',
+    'Enter a pattern using intl DateFormat tokens',
+    'dd/MM/yyyy',
   );
 
   const DateTimeFormat(this.label, this.description, this.example);

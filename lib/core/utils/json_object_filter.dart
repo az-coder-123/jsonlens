@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 import '../../features/json_analyzer/models/search_filter.dart';
 
 /// Finds all Map nodes in a JSON document that satisfy a list of
@@ -128,8 +130,10 @@ abstract final class JsonObjectFilter {
   /// DateTime matching — parses both sides according to [filter.dateTimeFormat]
   /// then compares temporally using the full numeric operator set.
   static bool _checkDateTime(dynamic raw, SearchFilter filter) {
-    final actual = _parseDateTime(raw, filter.dateTimeFormat);
-    final expected = _parseDateTime(filter.value, filter.dateTimeFormat);
+    final actual = _parseDateTime(raw, filter.dateTimeFormat,
+        filter.customDatePattern);
+    final expected = _parseDateTime(filter.value, filter.dateTimeFormat,
+        filter.customDatePattern);
     if (actual == null || expected == null) return false;
     return switch (filter.operator) {
       FilterOperator.equals => actual == expected,
@@ -142,24 +146,54 @@ abstract final class JsonObjectFilter {
     };
   }
 
-  /// Parses [raw] as a [DateTime] according to [format].
+  /// Parses [raw] as a [DateTime] according to [format], normalised to UTC.
   ///
-  /// Returns `null` when [raw] cannot be parsed.
-  static DateTime? _parseDateTime(dynamic raw, DateTimeFormat format) {
+  /// Normalising to UTC ensures that comparing ISO 8601 timestamps with
+  /// date-only strings (e.g. `"2025-04-30T09:41Z"` vs `"2025-04-30"`) works
+  /// correctly regardless of the local timezone.
+  ///
+  /// [customPattern] is only used when [format] is [DateTimeFormat.custom].
+  /// When the custom pattern is empty this method falls back to ISO 8601
+  /// parsing so the filter still produces results.
+  static DateTime? _parseDateTime(
+      dynamic raw, DateTimeFormat format, String customPattern) {
     if (raw == null) return null;
     final str = raw.toString().trim();
+    if (str.isEmpty) return null;
+
+    DateTime? result;
     switch (format) {
       case DateTimeFormat.iso8601:
-        return DateTime.tryParse(str);
+        result = DateTime.tryParse(str);
+
       case DateTimeFormat.timestamp:
         final n = double.tryParse(str);
         if (n == null) return null;
-        return DateTime.fromMillisecondsSinceEpoch((n * 1000).toInt());
+        result = DateTime.fromMillisecondsSinceEpoch(
+            (n * 1000).toInt(), isUtc: true);
+
       case DateTimeFormat.timestampMs:
         final n = double.tryParse(str);
         if (n == null) return null;
-        return DateTime.fromMillisecondsSinceEpoch(n.toInt());
+        result = DateTime.fromMillisecondsSinceEpoch(n.toInt(), isUtc: true);
+
+      case DateTimeFormat.custom:
+        final pattern = customPattern.trim();
+        if (pattern.isEmpty) {
+          // Fallback: try ISO 8601 when no pattern has been entered.
+          result = DateTime.tryParse(str);
+        } else {
+          try {
+            result = DateFormat(pattern).parseLoose(str, true); // isUTC=true
+          } catch (_) {
+            // Pattern doesn't match — attempt ISO 8601 as a last resort.
+            result = DateTime.tryParse(str);
+          }
+        }
     }
+
+    // Always return UTC so comparisons are timezone-independent.
+    return result?.toUtc();
   }
 
   /// Loose matching — converts [raw] to string regardless of type.

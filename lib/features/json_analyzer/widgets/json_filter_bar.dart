@@ -36,10 +36,16 @@ Widget _chipValueText(SearchFilter filter) {
     ValueType.datetime => AppColors.accent,
     _ => AppColors.jsonString,
   };
-  // For datetime show the format label as suffix.
-  final suffix = filter.valueType == ValueType.datetime
-      ? ' [${filter.dateTimeFormat.label}]'
-      : '';
+  // For datetime: show the custom pattern if provided, otherwise format label.
+  final String suffix;
+  if (filter.valueType == ValueType.datetime) {
+    final pat = filter.customDatePattern.trim();
+    suffix = filter.dateTimeFormat == DateTimeFormat.custom && pat.isNotEmpty
+        ? ' [$pat]'
+        : ' [${filter.dateTimeFormat.label}]';
+  } else {
+    suffix = '';
+  }
   return Text(
     '"${filter.value}"$suffix',
     style: GoogleFonts.jetBrainsMono(
@@ -81,18 +87,62 @@ class JsonFilterBar extends StatefulWidget {
 class _JsonFilterBarState extends State<JsonFilterBar> {
   bool _showForm = false;
 
-  void _remove(int index) =>
-      widget.onFiltersChanged([...widget.filters]..removeAt(index));
+  /// Index of the condition being edited, or -1 when adding a new one.
+  int _editingIndex = -1;
 
-  void _clearAll() => widget.onFiltersChanged(const []);
+  void _remove(int index) {
+    widget.onFiltersChanged([...widget.filters]..removeAt(index));
+    // Close form if the removed chip was the one being edited.
+    if (_editingIndex == index) {
+      setState(() {
+        _showForm = false;
+        _editingIndex = -1;
+      });
+    }
+  }
 
-  void _add(SearchFilter filter) {
-    widget.onFiltersChanged([...widget.filters, filter]);
-    setState(() => _showForm = false);
+  void _clearAll() {
+    widget.onFiltersChanged(const []);
+    setState(() {
+      _showForm = false;
+      _editingIndex = -1;
+    });
+  }
+
+  /// Opens the form to edit chip at [index].
+  /// Tapping the same chip again closes the form.
+  void _startEdit(int index) {
+    setState(() {
+      if (_showForm && _editingIndex == index) {
+        _showForm = false;
+        _editingIndex = -1;
+      } else {
+        _showForm = true;
+        _editingIndex = index;
+      }
+    });
+  }
+
+  void _addOrEdit(SearchFilter filter) {
+    final updated = [...widget.filters];
+    if (_editingIndex >= 0 && _editingIndex < updated.length) {
+      updated[_editingIndex] = filter;
+    } else {
+      updated.add(filter);
+    }
+    widget.onFiltersChanged(updated);
+    setState(() {
+      _showForm = false;
+      _editingIndex = -1;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isEditing = _editingIndex >= 0;
+    final initialFilter =
+        isEditing ? widget.filters[_editingIndex] : null;
+
     return Container(
       color: AppColors.surface,
       child: Column(
@@ -114,12 +164,21 @@ class _JsonFilterBarState extends State<JsonFilterBar> {
                         filter: e.value,
                         index: e.key,
                         total: widget.filters.length,
+                        isEditing: _editingIndex == e.key && _showForm,
+                        onEdit: () => _startEdit(e.key),
                         onRemove: () => _remove(e.key),
                       ),
                     ),
                 _AddButton(
-                  active: _showForm,
-                  onTap: () => setState(() => _showForm = !_showForm),
+                  active: _showForm && !isEditing,
+                  onTap: () => setState(() {
+                    if (_showForm && !isEditing) {
+                      _showForm = false;
+                    } else {
+                      _showForm = true;
+                      _editingIndex = -1;
+                    }
+                  }),
                 ),
                 if (widget.filters.isNotEmpty) ...[
                   _ClearAllButton(onTap: _clearAll),
@@ -131,12 +190,18 @@ class _JsonFilterBarState extends State<JsonFilterBar> {
               ],
             ),
           ),
-          // ── Add-condition inline form ───────────────────────────────────
+          // ── Add / Edit condition inline form ───────────────────────────
           if (_showForm)
             _AddConditionForm(
+              key: ValueKey(_editingIndex), // rebuild when switching chips
               keySuggestions: widget.keySuggestions,
-              onAdd: _add,
-              onCancel: () => setState(() => _showForm = false),
+              initialFilter: initialFilter,
+              isEditing: isEditing,
+              onAdd: _addOrEdit,
+              onCancel: () => setState(() {
+                _showForm = false;
+                _editingIndex = -1;
+              }),
             ),
         ],
       ),
@@ -152,12 +217,16 @@ class _FilterChip extends StatelessWidget {
   final SearchFilter filter;
   final int index;
   final int total;
+  final bool isEditing;
+  final VoidCallback onEdit;
   final VoidCallback onRemove;
 
   const _FilterChip({
     required this.filter,
     required this.index,
     required this.total,
+    required this.isEditing,
+    required this.onEdit,
     required this.onRemove,
   });
 
@@ -179,16 +248,30 @@ class _FilterChip extends StatelessWidget {
               ),
             ),
           ),
-        Container(
+        GestureDetector(
+          onTap: onEdit,
+          child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.12),
+            color: isEditing
+                ? AppColors.primary.withValues(alpha: 0.22)
+                : AppColors.primary.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+            border: Border.all(
+              color: isEditing
+                  ? AppColors.primary
+                  : AppColors.primary.withValues(alpha: 0.4),
+              width: isEditing ? 1.5 : 1.0,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (isEditing) ...[
+                const Icon(Icons.edit, size: 10, color: AppColors.primary),
+                const SizedBox(width: 4),
+              ],
               Text(
                 filter.key,
                 style: GoogleFonts.jetBrainsMono(
@@ -242,6 +325,7 @@ class _FilterChip extends StatelessWidget {
             ],
           ),
         ),
+        ), // closes GestureDetector(onTap: onEdit)
       ],
     );
   }
@@ -350,10 +434,19 @@ class _AddConditionForm extends StatefulWidget {
   final ValueChanged<SearchFilter> onAdd;
   final VoidCallback onCancel;
 
+  /// When non-null the form is pre-filled with these values for editing.
+  final SearchFilter? initialFilter;
+
+  /// `true` when editing an existing condition (changes button label to "Save").
+  final bool isEditing;
+
   const _AddConditionForm({
+    super.key,
     required this.keySuggestions,
     required this.onAdd,
     required this.onCancel,
+    this.initialFilter,
+    this.isEditing = false,
   });
 
   @override
@@ -367,6 +460,7 @@ class _AddConditionFormState extends State<_AddConditionForm> {
   final FocusNode _keyFocus = FocusNode();
   final TextEditingController _valueController = TextEditingController();
   final FocusNode _valueFocus = FocusNode();
+  final TextEditingController _patternController = TextEditingController();
 
   ValueType _valueType = ValueType.any;
   FilterOperator _operator = FilterOperator.contains;
@@ -377,9 +471,20 @@ class _AddConditionFormState extends State<_AddConditionForm> {
   @override
   void initState() {
     super.initState();
-    // Rebuild whenever key or value text changes so button state is accurate.
+    // Pre-fill when editing an existing condition.
+    final initial = widget.initialFilter;
+    if (initial != null) {
+      _valueType = initial.valueType;
+      _operator = initial.operator;
+      _caseSensitive = initial.caseSensitive;
+      _dateTimeFormat = initial.dateTimeFormat;
+      _keyController.text = initial.key;
+      _valueController.text = initial.value;
+      _patternController.text = initial.customDatePattern;
+    }
     _keyController.addListener(_onTextChanged);
     _valueController.addListener(_onTextChanged);
+    _patternController.addListener(_onTextChanged);
   }
 
   void _onTextChanged() => setState(() {});
@@ -394,6 +499,9 @@ class _AddConditionFormState extends State<_AddConditionForm> {
       ..removeListener(_onTextChanged)
       ..dispose();
     _valueFocus.dispose();
+    _patternController
+      ..removeListener(_onTextChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -420,10 +528,18 @@ class _AddConditionFormState extends State<_AddConditionForm> {
     });
   }
 
-  bool get _canSubmit =>
-      _keyController.text.trim().isNotEmpty &&
-      (_valueType == ValueType.nullValue ||
-          _valueController.text.trim().isNotEmpty);
+  bool get _canSubmit {
+    if (_keyController.text.trim().isEmpty) return false;
+    if (_valueType == ValueType.nullValue) return true;
+    if (_valueController.text.trim().isEmpty) return false;
+    // Custom datetime format requires a non-empty pattern.
+    if (_valueType == ValueType.datetime &&
+        _dateTimeFormat == DateTimeFormat.custom &&
+        _patternController.text.trim().isEmpty) {
+      return false;
+    }
+    return true;
+  }
 
   void _submit() {
     if (!_canSubmit) return;
@@ -434,6 +550,7 @@ class _AddConditionFormState extends State<_AddConditionForm> {
       valueType: _valueType,
       caseSensitive: _caseSensitive,
       dateTimeFormat: _dateTimeFormat,
+      customDatePattern: _patternController.text.trim(),
     ));
   }
 
@@ -491,8 +608,14 @@ class _AddConditionFormState extends State<_AddConditionForm> {
               onChanged: (f) => setState(() {
                 _dateTimeFormat = f;
                 _valueController.clear();
+                if (f != DateTimeFormat.custom) _patternController.clear();
               }),
             ),
+            // Custom pattern input — shown only when Custom format selected.
+            if (_dateTimeFormat == DateTimeFormat.custom) ...[
+              const SizedBox(height: AppDimensions.paddingS),
+              _CustomPatternInput(controller: _patternController),
+            ],
           ],
           const SizedBox(height: AppDimensions.paddingS),
           // ── Step 4: Value input (adapts to type) ──────────────────────
@@ -596,7 +719,7 @@ class _AddConditionFormState extends State<_AddConditionForm> {
                   ),
                 ),
                 child: Text(
-                  'Add',
+                  widget.isEditing ? 'Save' : 'Add',
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -792,6 +915,93 @@ class _ValueTypeSelector extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Custom datetime pattern input
+// ---------------------------------------------------------------------------
+
+/// Text field for entering a custom `intl` DateFormat pattern together with
+/// a quick-reference guide of the most common pattern tokens.
+class _CustomPatternInput extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _CustomPatternInput({required this.controller});
+
+  static const _tokenRef = [
+    ('yyyy', 'year'),
+    ('MM', 'month'),
+    ('dd', 'day'),
+    ('HH', 'hour 24h'),
+    ('mm', 'minute'),
+    ('ss', 'second'),
+    ('a', 'AM/PM'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: controller,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: AppDimensions.fontSizeS,
+            color: AppColors.accent,
+          ),
+          decoration: InputDecoration(
+            hintText: 'e.g. dd/MM/yyyy  or  MM-dd-yyyy HH:mm',
+            hintStyle: GoogleFonts.jetBrainsMono(
+              fontSize: AppDimensions.fontSizeS,
+              color: AppColors.textMuted,
+            ),
+            filled: true,
+            fillColor: AppColors.surface,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              borderSide: const BorderSide(color: AppColors.accent),
+            ),
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 2,
+          children: _tokenRef.map((t) {
+            return RichText(
+              text: TextSpan(
+                style: GoogleFonts.jetBrainsMono(fontSize: 10),
+                children: [
+                  TextSpan(
+                    text: t.$1,
+                    style: const TextStyle(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  TextSpan(
+                    text: '=${t.$2}',
+                    style: const TextStyle(color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 }
