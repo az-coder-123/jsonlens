@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../providers/json_analyzer_provider.dart';
+import '../providers/json_search_provider.dart';
 
 /// Search panel widget for searching within JSON.
 class JsonSearchPanel extends ConsumerStatefulWidget {

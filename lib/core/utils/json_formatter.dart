@@ -56,6 +56,9 @@ abstract final class JsonFormatter {
 
   // ------------------------ Async / Isolate helpers ------------------------
 
+  /// Maximum time to wait for an isolate to complete before timing out.
+  static const Duration _isolateTimeout = Duration(seconds: 30);
+
   static void _formatObjectEntry(List<dynamic> msg) {
     final data = msg[0];
     final SendPort reply = msg[1] as SendPort;
@@ -80,30 +83,36 @@ abstract final class JsonFormatter {
   /// Formats an already-decoded object using an isolate.
   static Future<String> formatObjectAsync(dynamic data) async {
     final rp = ReceivePort();
-    await Isolate.spawn(_formatObjectEntry, [data, rp.sendPort]);
-    final result = await rp.first as String;
-    rp.close();
-    return result;
+    try {
+      await Isolate.spawn(_formatObjectEntry, [data, rp.sendPort]);
+      return await rp.first.timeout(_isolateTimeout) as String;
+    } finally {
+      rp.close();
+    }
   }
 
   /// Formats a raw JSON string using an isolate (parse + pretty-print).
   static Future<String> formatAsync(String input) async {
     if (input.trim().isEmpty) return '';
     final rp = ReceivePort();
-    await Isolate.spawn(_formatStringEntry, [input, rp.sendPort]);
-    final result = await rp.first as String;
-    rp.close();
-    return result;
+    try {
+      await Isolate.spawn(_formatStringEntry, [input, rp.sendPort]);
+      return await rp.first.timeout(_isolateTimeout) as String;
+    } finally {
+      rp.close();
+    }
   }
 
   /// Minifies a raw JSON string using an isolate.
   static Future<String> minifyAsync(String input) async {
     if (input.trim().isEmpty) return '';
     final rp = ReceivePort();
-    await Isolate.spawn(_minifyStringEntry, [input, rp.sendPort]);
-    final result = await rp.first as String;
-    rp.close();
-    return result;
+    try {
+      await Isolate.spawn(_minifyStringEntry, [input, rp.sendPort]);
+      return await rp.first.timeout(_isolateTimeout) as String;
+    } finally {
+      rp.close();
+    }
   }
 
   /// Parses a JSON string in an isolate and returns the decoded object.
@@ -112,22 +121,22 @@ abstract final class JsonFormatter {
   static Future<dynamic> tryParseAsync(String input) async {
     if (input.trim().isEmpty) return null;
     final rp = ReceivePort();
-    // Reuse formatStringEntry by sending parse result back
     void parseEntry(List<dynamic> msg) {
       final str = msg[0] as String;
       final SendPort reply = msg[1] as SendPort;
       try {
-        final obj = jsonDecode(str);
-        reply.send(obj);
+        reply.send(jsonDecode(str));
       } catch (_) {
         reply.send(null);
       }
     }
 
-    await Isolate.spawn(parseEntry, [input, rp.sendPort]);
-    final result = await rp.first;
-    rp.close();
-    return result;
+    try {
+      await Isolate.spawn(parseEntry, [input, rp.sendPort]);
+      return await rp.first.timeout(_isolateTimeout);
+    } finally {
+      rp.close();
+    }
   }
 
   // ------------------------ Object-based Async helpers ------------------------
@@ -142,9 +151,11 @@ abstract final class JsonFormatter {
   /// Minifies an already-decoded object using an isolate.
   static Future<String> minifyObjectAsync(dynamic data) async {
     final rp = ReceivePort();
-    await Isolate.spawn(_minifyObjectEntry, [data, rp.sendPort]);
-    final result = await rp.first as String;
-    rp.close();
-    return result;
+    try {
+      await Isolate.spawn(_minifyObjectEntry, [data, rp.sendPort]);
+      return await rp.first.timeout(_isolateTimeout) as String;
+    } finally {
+      rp.close();
+    }
   }
 }

@@ -318,6 +318,12 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     await ref.read(jsonAnalyzerProvider.notifier).updateFromParsedData(data);
   }
 
+  /// Creates a deep copy of [data] via a JSON round-trip.
+  ///
+  /// Used to avoid mutating the object currently held in Riverpod state in-place
+  /// before [_commitDataChange] succeeds.
+  static dynamic _deepCopy(dynamic data) => jsonDecode(jsonEncode(data));
+
   /// Called by [LazyJsonTree] when a leaf value is edited inline.
   ///
   /// Navigates the current parsed data to the node at [path], updates it,
@@ -326,11 +332,12 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
     final parsedData = ref.read(parsedDataProvider);
     if (parsedData == null) return;
 
+    final copy = _deepCopy(parsedData);
     final segments = JsonPath.toSegments(path);
-    final ok = _setAtPath(parsedData, segments, newValue);
+    final ok = _setAtPath(copy, segments, newValue);
     if (!ok) return;
 
-    await _commitDataChange(parsedData);
+    await _commitDataChange(copy);
   }
 
   /// Navigates [data] to the node at exactly [segments].
@@ -352,20 +359,21 @@ class _JsonTreeViewWidgetState extends ConsumerState<JsonTreeViewWidget> {
   Future<void> _applyNodeAction(String path, TreeNodeAction action) async {
     final parsedData = ref.read(parsedDataProvider);
     if (parsedData == null) return;
+    final copy = _deepCopy(parsedData);
     final segments = JsonPath.toSegments(path);
 
     switch (action) {
       case TreeNodeAction.delete:
-        await _deleteNode(parsedData, segments);
+        await _deleteNode(copy, segments);
         break;
       case TreeNodeAction.addKey:
-        await _addKey(parsedData, segments);
+        await _addKey(copy, segments);
         break;
       case TreeNodeAction.addItem:
-        await _addItem(parsedData, segments);
+        await _addItem(copy, segments);
         break;
       case TreeNodeAction.duplicate:
-        await _duplicateNode(parsedData, segments);
+        await _duplicateNode(copy, segments);
         break;
     }
   }

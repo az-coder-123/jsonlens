@@ -108,11 +108,9 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
   /// Scrolls the editor to [line] (0-based) using an animated scroll.
   ///
   /// JetBrains Mono 14px with height 1.5 → line height ≈ 21 px.
-  static const double _estimatedLineHeight = 21.0;
-
   void _scrollEditorToLine(int line) {
     if (!_scrollController.hasClients) return;
-    final target = (line * _estimatedLineHeight).clamp(
+    final target = (line * AppDimensions.estimatedLineHeight).clamp(
       0.0,
       _scrollController.position.maxScrollExtent,
     );
@@ -209,8 +207,6 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     );
   }
 
-  static const double _kCompactThreshold = 560.0;
-
   Widget _buildHeader({required bool isReadOnlyMode, required int inputSize}) {
     final isValid = ref.watch(isValidProvider);
     final isEmpty = ref.watch(isEmptyProvider);
@@ -231,7 +227,8 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact =
-              !isReadOnlyMode && constraints.maxWidth < _kCompactThreshold;
+              !isReadOnlyMode &&
+              constraints.maxWidth < AppDimensions.inputCompactThreshold;
           return Row(
             children: [
               Icon(
@@ -271,7 +268,7 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     );
   }
 
-  /// Full grouped icon-button row shown when width >= [_kCompactThreshold].
+  /// Full grouped icon-button row shown when width >= [AppDimensions.inputCompactThreshold].
   Widget _buildActionsWide({
     required bool canAct,
     required bool canCopySave,
@@ -487,7 +484,7 @@ class _JsonInputAreaState extends ConsumerState<JsonInputArea> {
     );
   }
 
-  /// Collapsed single `⋯` menu shown when width < [_kCompactThreshold].
+  /// Collapsed single `⋯` menu shown when width < [AppDimensions.inputCompactThreshold].
   Widget _buildActionsCompact({
     required bool canAct,
     required bool canCopySave,

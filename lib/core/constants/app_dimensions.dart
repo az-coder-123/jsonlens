@@ -37,4 +37,8 @@ abstract final class AppDimensions {
 
   // Editor
   static const double lineNumberWidth = 48.0;
+
+  // Input area
+  static const double inputCompactThreshold = 560.0;
+  static const double estimatedLineHeight = 21.0;
 }

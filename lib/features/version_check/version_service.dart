@@ -8,8 +8,12 @@ class VersionService {
   // Supplied API (Supabase REST)
   static const _endpoint =
       "https://lezadwcqeaufwdnxntoe.supabase.co/rest/v1/jsonlens?select=version,release_notes,%20download_at,created_at&order=version.desc&limit=1";
-  // Provided key (public) — in a real app use a server-side proxy or secured key
-  static const _apiKey = 'sb_publishable_yPx-x3qexCa56EMkbtw0mw_6b8ma8Tc';
+  // Publishable (anon) key — safe for client-side use but can be overridden
+  // at compile time with --dart-define=SUPABASE_ANON_KEY=<value>.
+  static const _apiKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: 'sb_publishable_yPx-x3qexCa56EMkbtw0mw_6b8ma8Tc',
+  );
 
   Future<VersionInfo?> fetchLatest() async {
     final r = await http.get(

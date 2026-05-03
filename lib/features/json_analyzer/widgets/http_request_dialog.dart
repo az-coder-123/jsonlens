@@ -12,6 +12,8 @@ import '../../../core/utils/json_fetcher.dart';
 import '../models/http_request_entry.dart';
 import '../providers/http_request_history_provider.dart';
 import '../providers/json_analyzer_provider.dart';
+import 'http_auth_section.dart';
+import 'http_history_panel.dart';
 
 /// Dialog that fetches JSON from an HTTP URL and loads it into the editor.
 ///
@@ -63,10 +65,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
 
   /// Whether to show the auth quick-fill panel.
   bool _showAuth = false;
-  String _authType = 'none'; // 'none' | 'bearer' | 'basic'
-  final _authTokenController = TextEditingController();
-  final _authUserController = TextEditingController();
-  final _authPassController = TextEditingController();
 
   /// Whether to display the advanced settings panel.
   bool _showAdvanced = false;
@@ -79,9 +77,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
     _bodyController.dispose();
     _curlController.dispose();
     _urlFocus.dispose();
-    _authTokenController.dispose();
-    _authUserController.dispose();
-    _authPassController.dispose();
     for (final h in _headers) {
       h.dispose();
     }
@@ -246,23 +241,10 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
   // Auth helpers
   // ---------------------------------------------------------------------------
 
-  /// Builds the Authorization header value for the current auth type and
-  /// inserts or updates it in [_headers].
-  void _applyAuth() {
-    String? headerValue;
-    if (_authType == 'bearer') {
-      final token = _authTokenController.text.trim();
-      if (token.isEmpty) return;
-      headerValue = 'Bearer $token';
-    } else if (_authType == 'basic') {
-      final user = _authUserController.text.trim();
-      final pass = _authPassController.text;
-      final encoded = base64Encode(utf8.encode('$user:$pass'));
-      headerValue = 'Basic $encoded';
-    }
-    if (headerValue == null) return;
-
-    // Update existing Authorization header or add a new row.
+  /// Inserts or updates the Authorization header with [headerValue].
+  ///
+  /// Called by [HttpAuthSection] after the user fills in credentials.
+  void _applyAuthHeader(String headerValue) {
     final existing = _headers.where(
       (h) => h.keyController.text.trim().toLowerCase() == 'authorization',
     );
@@ -282,6 +264,8 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
   // ---------------------------------------------------------------------------
 
   /// Restores all fields from a history/saved [entry].
+  ///
+  /// Called by [HttpHistoryPanel] when the user taps a row.
   void _restoreEntry(HttpRequestEntry entry) {
     _urlController.text = entry.url;
     for (final h in _headers) {
@@ -303,78 +287,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
       _responseStatusCode = null;
       _responseHeaders = null;
     });
-  }
-
-  /// Opens a dialog to name [entry] and saves it.
-  Future<void> _promptSaveEntry(HttpRequestEntry entry) async {
-    final name = await _showNameDialog(context, initial: entry.name ?? '');
-    if (name == null || name.trim().isEmpty) return;
-    if (!mounted) return;
-    await ref
-        .read(httpRequestHistoryProvider.notifier)
-        .saveRequest(entry, name.trim());
-  }
-
-  static Future<String?> _showNameDialog(
-    BuildContext ctx, {
-    String initial = '',
-  }) {
-    final ctrl = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: ctx,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-          side: const BorderSide(color: AppColors.border),
-        ),
-        title: const Text(
-          'Save request',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: AppDimensions.fontSizeL,
-          ),
-        ),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: AppDimensions.fontSizeM,
-          ),
-          decoration: InputDecoration(
-            hintText: 'Enter a name…',
-            hintStyle: const TextStyle(color: AppColors.textMuted),
-            filled: true,
-            fillColor: AppColors.surfaceVariant,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-              borderSide: const BorderSide(color: AppColors.border),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(ctrl.text),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.buttonPrimary,
-              foregroundColor: AppColors.textPrimary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-              ),
-            ),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -415,7 +327,7 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                       const SizedBox(height: AppDimensions.paddingM),
                     ],
                     if (_showHistory) ...[
-                      _buildHistoryPanel(),
+                      HttpHistoryPanel(onRestoreEntry: _restoreEntry),
                       const SizedBox(height: AppDimensions.paddingM),
                       const Divider(color: AppColors.border, height: 1),
                       const SizedBox(height: AppDimensions.paddingM),
@@ -423,7 +335,7 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                     _buildUrlRow(),
                     const SizedBox(height: AppDimensions.paddingM),
                     if (_showAuth) ...[
-                      _buildAuthSection(),
+                      HttpAuthSection(onApply: _applyAuthHeader),
                       const SizedBox(height: AppDimensions.paddingM),
                     ],
                     _buildHeadersSection(),
@@ -734,7 +646,7 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                   dropdownColor: AppColors.surface,
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: AppDimensions.fontSizeS,
-                    color: _methodColor(_method),
+                    color: httpMethodColor(_method),
                     fontWeight: FontWeight.w700,
                   ),
                   items: JsonFetcher.supportedMethods
@@ -745,7 +657,7 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
                             m,
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: AppDimensions.fontSizeS,
-                              color: _methodColor(m),
+                              color: httpMethodColor(m),
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -949,316 +861,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
           decoration: _fieldDecoration('{ "key": "value" }'),
         ),
       ],
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // History panel
-  // ---------------------------------------------------------------------------
-
-  Widget _buildHistoryPanel() {
-    final histState = ref.watch(httpRequestHistoryProvider);
-    final hasContent =
-        histState.history.isNotEmpty || histState.saved.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.history,
-              size: AppDimensions.iconSizeS,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(width: AppDimensions.paddingXS),
-            const Text(
-              'History & Saved',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: AppDimensions.fontSizeS,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const Spacer(),
-            if (histState.history.isNotEmpty)
-              TextButton(
-                onPressed: () async {
-                  await ref
-                      .read(httpRequestHistoryProvider.notifier)
-                      .clearHistory();
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.error,
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                ),
-                child: const Text(
-                  'Clear history',
-                  style: TextStyle(fontSize: AppDimensions.fontSizeS),
-                ),
-              ),
-          ],
-        ),
-        if (!hasContent)
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              vertical: AppDimensions.paddingS,
-            ),
-            child: Text(
-              'No requests yet. Successful fetches are saved automatically.',
-              style: TextStyle(
-                color: AppColors.textMuted,
-                fontSize: AppDimensions.fontSizeS,
-              ),
-            ),
-          )
-        else ...[
-          if (histState.saved.isNotEmpty) ...[
-            const SizedBox(height: AppDimensions.paddingXS),
-            _buildHistoryGroup('Saved', histState.saved, isSaved: true),
-          ],
-          if (histState.history.isNotEmpty) ...[
-            const SizedBox(height: AppDimensions.paddingXS),
-            _buildHistoryGroup('Recent', histState.history, isSaved: false),
-          ],
-        ],
-      ],
-    );
-  }
-
-  Widget _buildHistoryGroup(
-    String label,
-    List<HttpRequestEntry> entries, {
-    required bool isSaved,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 4),
-        ...entries.map((e) => _buildHistoryRow(e, isSaved: isSaved)),
-      ],
-    );
-  }
-
-  Widget _buildHistoryRow(HttpRequestEntry entry, {required bool isSaved}) {
-    return InkWell(
-      onTap: () => _restoreEntry(entry),
-      borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: _methodColor(entry.method).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                entry.method,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 10,
-                  color: _methodColor(entry.method),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (entry.name != null)
-                    Text(
-                      entry.name!,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: AppDimensions.fontSizeS,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  Text(
-                    entry.url,
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            // Save / rename button (star for history, edit for saved).
-            IconButton(
-              icon: Icon(
-                isSaved ? Icons.edit_outlined : Icons.star_border,
-                size: 15,
-                color: AppColors.textMuted,
-              ),
-              tooltip: isSaved ? 'Rename' : 'Save',
-              onPressed: () => _promptSaveEntry(entry),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            ),
-            // Delete button.
-            IconButton(
-              icon: const Icon(
-                Icons.close,
-                size: 14,
-                color: AppColors.textMuted,
-              ),
-              tooltip: 'Remove',
-              onPressed: () async {
-                if (isSaved) {
-                  await ref
-                      .read(httpRequestHistoryProvider.notifier)
-                      .deleteSaved(entry.id);
-                } else {
-                  await ref
-                      .read(httpRequestHistoryProvider.notifier)
-                      .deleteHistory(entry.id);
-                }
-              },
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Auth section
-  // ---------------------------------------------------------------------------
-
-  Widget _buildAuthSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.lock_outline,
-              size: AppDimensions.iconSizeS,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(width: AppDimensions.paddingXS),
-            const Text(
-              'Auth',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: AppDimensions.fontSizeS,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: AppDimensions.paddingM),
-            _buildAuthTypeChip('none', 'No Auth'),
-            const SizedBox(width: 6),
-            _buildAuthTypeChip('bearer', 'Bearer Token'),
-            const SizedBox(width: 6),
-            _buildAuthTypeChip('basic', 'Basic Auth'),
-          ],
-        ),
-        if (_authType == 'bearer') ...[
-          const SizedBox(height: AppDimensions.paddingS),
-          TextField(
-            controller: _authTokenController,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: AppDimensions.fontSizeS,
-              color: AppColors.textPrimary,
-            ),
-            decoration: _fieldDecoration('Token'),
-          ),
-        ],
-        if (_authType == 'basic') ...[
-          const SizedBox(height: AppDimensions.paddingS),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _authUserController,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: AppDimensions.fontSizeS,
-                    color: AppColors.textPrimary,
-                  ),
-                  decoration: _fieldDecoration('Username'),
-                ),
-              ),
-              const SizedBox(width: AppDimensions.paddingS),
-              Expanded(
-                child: TextField(
-                  controller: _authPassController,
-                  obscureText: true,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: AppDimensions.fontSizeS,
-                    color: AppColors.textPrimary,
-                  ),
-                  decoration: _fieldDecoration('Password'),
-                ),
-              ),
-            ],
-          ),
-        ],
-        if (_authType != 'none') ...[
-          const SizedBox(height: AppDimensions.paddingS),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              onPressed: _applyAuth,
-              icon: const Icon(Icons.check, size: AppDimensions.iconSizeS),
-              label: const Text('Apply to headers'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.buttonPrimary,
-                foregroundColor: AppColors.textPrimary,
-                visualDensity: VisualDensity.compact,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildAuthTypeChip(String value, String label) {
-    final selected = _authType == value;
-    return GestureDetector(
-      onTap: () => setState(() => _authType = value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.primary.withValues(alpha: 0.18)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.border,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: selected ? AppColors.primary : AppColors.textSecondary,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
-      ),
     );
   }
 
@@ -1577,17 +1179,6 @@ class _HttpRequestDialogState extends ConsumerState<HttpRequestDialog> {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
-
-  /// Returns a color for each HTTP method following REST API convention.
-  Color _methodColor(String method) => switch (method) {
-    'GET' => AppColors.secondary, // teal — safe read
-    'POST' => AppColors.warning, // orange — create
-    'PUT' => const Color(0xFF569CD6), // blue — full replace
-    'PATCH' => const Color(0xFFB5CEA8), // green — partial update
-    'DELETE' => AppColors.error, // red — destructive
-    'HEAD' => AppColors.textSecondary,
-    _ => AppColors.textSecondary, // OPTIONS, fallback
-  };
 
   InputDecoration _fieldDecoration(String hint) {
     return InputDecoration(

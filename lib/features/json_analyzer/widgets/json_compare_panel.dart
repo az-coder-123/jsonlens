@@ -7,6 +7,7 @@ import '../../../core/constants/app_dimensions.dart';
 import '../../../shared/widgets/error_display.dart';
 import '../models/json_diff_result.dart';
 import '../providers/json_analyzer_provider.dart';
+import '../providers/json_compare_provider.dart';
 
 /// Widget for comparing two JSON objects.
 class JsonComparePanel extends ConsumerStatefulWidget {

@@ -4,9 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
-import '../../../shared/widgets/error_display.dart';
 import '../../../core/utils/json_formatter.dart';
+import '../../../shared/widgets/error_display.dart';
 import '../providers/json_analyzer_provider.dart';
+import '../providers/json_path_query_provider.dart';
 
 /// Widget for querying JSON using path notation.
 class JsonPathQueryPanel extends ConsumerStatefulWidget {

@@ -36,6 +36,7 @@ class HttpRequestHistoryNotifier
   static const _keyHistory = 'http_request_history_v1';
   static const _keySaved = 'http_request_saved_v1';
   static const _maxHistory = 20;
+  static const _maxSaved = 50;
 
   HttpRequestHistoryNotifier() : super(const HttpRequestHistoryState()) {
     _load();
@@ -108,7 +109,7 @@ class HttpRequestHistoryNotifier
       ...state.saved.where(
         (e) => e.url != entry.url || e.method != entry.method,
       ),
-    ];
+    ].take(_maxSaved).toList();
     state = state.copyWith(saved: updated);
     await _persist();
   }

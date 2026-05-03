@@ -22,7 +22,7 @@ abstract final class JsonValidator {
     } on FormatException catch (e) {
       return JsonValidationResult(
         isValid: false,
-        errorMessage: _formatErrorMessage(e),
+        errorMessage: e.message,
         errorOffset: e.offset,
         lineNumber: _calculateLineNumber(input, e.offset),
       );
@@ -70,21 +70,6 @@ abstract final class JsonValidator {
       errorOffset: offset,
       lineNumber: _calculateLineNumber(input, offset),
     );
-  }
-
-  /// Formats the error message from a [FormatException].
-  static String _formatErrorMessage(FormatException e) {
-    String message = e.message;
-
-    // Clean up common error message prefixes
-    if (message.startsWith('Unexpected character')) {
-      return message;
-    }
-    if (message.startsWith('Expected')) {
-      return message;
-    }
-
-    return message;
   }
 
   /// Calculates the line number from the error offset.
