@@ -70,9 +70,9 @@ For mobile platforms (iOS, Android) or custom builds, please refer to the **[Bui
 
 _Showcase: concise, professional visual overview of key UI flows._
 
-| Input area & Toolbar | Tree view (expanded) |
+| Show result as path list | Show tree view |
 |---|---|
-| ![Input area and toolbar](screenshots/input-area-toolbar.png) | ![Tree view expanded](screenshots/tree-view-expanded.png) |
+| ![Show result as path list](screenshots/tree-view-01.png) | ![Show tree view](screenshots/tree-view-expanded.png) |
 | Quick editing, formatting, and clipboard actions. | Lazy, virtualized tree for exploring large JSON documents. |
 
 | Path Query Panel | Statistics Panel |
