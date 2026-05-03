@@ -9,12 +9,17 @@ class SearchFilter {
   /// Only relevant for [ValueType.string] and [ValueType.any].
   final bool caseSensitive;
 
+  /// Format used to parse datetime strings.
+  /// Only relevant when [valueType] is [ValueType.datetime].
+  final DateTimeFormat dateTimeFormat;
+
   const SearchFilter({
     required this.key,
     required this.operator,
     required this.value,
     this.valueType = ValueType.any,
     this.caseSensitive = false,
+    this.dateTimeFormat = DateTimeFormat.iso8601,
   });
 
   @override
@@ -24,16 +29,20 @@ class SearchFilter {
       other.operator == operator &&
       other.value == value &&
       other.valueType == valueType &&
-      other.caseSensitive == caseSensitive;
+      other.caseSensitive == caseSensitive &&
+      other.dateTimeFormat == dateTimeFormat;
 
   @override
   int get hashCode =>
-      Object.hash(key, operator, value, valueType, caseSensitive);
+      Object.hash(key, operator, value, valueType, caseSensitive, dateTimeFormat);
 
   @override
   String toString() {
     final cs = caseSensitive ? ' [Aa]' : '';
-    return 'SearchFilter($key ${operator.label} "$value" ${valueType.label}$cs)';
+    final dt = valueType == ValueType.datetime
+        ? ' [${dateTimeFormat.label}]'
+        : '';
+    return 'SearchFilter($key ${operator.label} "$value" ${valueType.label}$cs$dt)';
   }
 }
 
@@ -42,28 +51,21 @@ class SearchFilter {
 // ---------------------------------------------------------------------------
 
 /// The expected data type of the JSON value being filtered.
-///
-/// Selecting a specific type makes matching strict — only nodes whose actual
-/// runtime type matches will be considered. [any] preserves the original loose
-/// behaviour (toString comparison, type-agnostic).
 enum ValueType {
   any('Any', null),
   string('Str', 'string'),
   number('Num', 'number'),
   boolean('Bool', 'boolean'),
-  nullValue('Null', 'null');
+  nullValue('Null', 'null'),
+  datetime('Date', 'datetime');
 
   const ValueType(this.label, this.typeName);
 
-  /// Short label shown on filter chips and the type selector.
   final String label;
-
-  /// Internal type name used for display; `null` for [any].
   final String? typeName;
 
-  /// Returns the operators that make sense for this [ValueType].
   List<FilterOperator> get availableOperators => switch (this) {
-        ValueType.number => const [
+        ValueType.number || ValueType.datetime => const [
             FilterOperator.equals,
             FilterOperator.notEquals,
             FilterOperator.greaterThan,
@@ -86,6 +88,40 @@ enum ValueType {
 }
 
 // ---------------------------------------------------------------------------
+// DateTimeFormat
+// ---------------------------------------------------------------------------
+
+/// Supported date/time serialisation formats for [ValueType.datetime] filters.
+enum DateTimeFormat {
+  iso8601(
+    'ISO 8601',
+    'yyyy-MM-dd or yyyy-MM-ddTHH:mm:ssZ',
+    '2024-01-15',
+  ),
+  timestamp(
+    'Unix (s)',
+    'Seconds since epoch',
+    '1705276800',
+  ),
+  timestampMs(
+    'Unix (ms)',
+    'Milliseconds since epoch',
+    '1705276800000',
+  );
+
+  const DateTimeFormat(this.label, this.description, this.example);
+
+  /// Short label shown on the format selector chips.
+  final String label;
+
+  /// Human-readable description of the format.
+  final String description;
+
+  /// Example value shown as hint in the value input field.
+  final String example;
+}
+
+// ---------------------------------------------------------------------------
 // FilterOperator
 // ---------------------------------------------------------------------------
 
@@ -102,7 +138,5 @@ enum FilterOperator {
   lessOrEqual('≤');
 
   const FilterOperator(this.label);
-
-  /// Short display label shown on filter chips and the operator selector.
   final String label;
 }

@@ -15,6 +15,7 @@ Color _typeColor(ValueType type) => switch (type) {
       ValueType.number => AppColors.jsonNumber,
       ValueType.boolean => AppColors.jsonBoolean,
       ValueType.nullValue => AppColors.jsonNull,
+      ValueType.datetime => AppColors.accent,
       ValueType.any => AppColors.textMuted,
     };
 
@@ -29,13 +30,18 @@ Widget _chipValueText(SearchFilter filter) {
       ),
     );
   }
-  final color = filter.valueType == ValueType.number
-      ? AppColors.jsonNumber
-      : filter.valueType == ValueType.boolean
-          ? AppColors.jsonBoolean
-          : AppColors.jsonString;
+  final color = switch (filter.valueType) {
+    ValueType.number => AppColors.jsonNumber,
+    ValueType.boolean => AppColors.jsonBoolean,
+    ValueType.datetime => AppColors.accent,
+    _ => AppColors.jsonString,
+  };
+  // For datetime show the format label as suffix.
+  final suffix = filter.valueType == ValueType.datetime
+      ? ' [${filter.dateTimeFormat.label}]'
+      : '';
   return Text(
-    '"${filter.value}"',
+    '"${filter.value}"$suffix',
     style: GoogleFonts.jetBrainsMono(
       fontSize: AppDimensions.fontSizeS,
       color: color,
@@ -365,6 +371,7 @@ class _AddConditionFormState extends State<_AddConditionForm> {
   ValueType _valueType = ValueType.any;
   FilterOperator _operator = FilterOperator.contains;
   bool _caseSensitive = false;
+  DateTimeFormat _dateTimeFormat = DateTimeFormat.iso8601;
   List<String> _valueSamples = [];
 
   @override
@@ -408,6 +415,8 @@ class _AddConditionFormState extends State<_AddConditionForm> {
       }
       // Null type needs no value — clear input.
       if (type == ValueType.nullValue) _valueController.clear();
+      // Pre-fill datetime with format example as hint placeholder.
+      if (type == ValueType.datetime) _valueController.clear();
     });
   }
 
@@ -424,6 +433,7 @@ class _AddConditionFormState extends State<_AddConditionForm> {
       value: _valueType == ValueType.nullValue ? '' : _valueController.text.trim(),
       valueType: _valueType,
       caseSensitive: _caseSensitive,
+      dateTimeFormat: _dateTimeFormat,
     ));
   }
 
@@ -471,6 +481,19 @@ class _AddConditionFormState extends State<_AddConditionForm> {
             available: _valueType.availableOperators,
             onChanged: (op) => setState(() => _operator = op),
           ),
+          // ── DateTime format selector (only for datetime type) ─────────
+          if (_valueType == ValueType.datetime) ...[
+            const SizedBox(height: AppDimensions.paddingS),
+            const _SectionLabel(label: 'Format'),
+            const SizedBox(height: 4),
+            _DateTimeFormatSelector(
+              selected: _dateTimeFormat,
+              onChanged: (f) => setState(() {
+                _dateTimeFormat = f;
+                _valueController.clear();
+              }),
+            ),
+          ],
           const SizedBox(height: AppDimensions.paddingS),
           // ── Step 4: Value input (adapts to type) ──────────────────────
           if (_valueType != ValueType.nullValue) ...[
@@ -508,9 +531,13 @@ class _AddConditionFormState extends State<_AddConditionForm> {
                             s != 'false' &&
                             s != 'null')
                         .toList(),
-                keyboardType: _valueType == ValueType.number
+                keyboardType: (_valueType == ValueType.number ||
+                        _valueType == ValueType.datetime)
                     ? const TextInputType.numberWithOptions(decimal: true)
                     : TextInputType.text,
+                hintText: _valueType == ValueType.datetime
+                    ? _dateTimeFormat.example
+                    : 'Enter value…',
                 onSampleTap: (s) {
                   _valueController.text = s;
                   _valueController.selection =
@@ -885,6 +912,7 @@ class _ValueInput extends StatelessWidget {
   final ValueChanged<String> onSampleTap;
   final VoidCallback onSubmit;
   final TextInputType keyboardType;
+  final String hintText;
 
   const _ValueInput({
     required this.controller,
@@ -893,6 +921,7 @@ class _ValueInput extends StatelessWidget {
     required this.onSampleTap,
     required this.onSubmit,
     this.keyboardType = TextInputType.text,
+    this.hintText = 'Enter value…',
   });
 
   @override
@@ -910,7 +939,7 @@ class _ValueInput extends StatelessWidget {
             color: AppColors.jsonString,
           ),
           decoration: InputDecoration(
-            hintText: 'Enter value…',
+            hintText: hintText,
             hintStyle: GoogleFonts.jetBrainsMono(
               fontSize: AppDimensions.fontSizeS,
               color: AppColors.textMuted,
@@ -963,6 +992,72 @@ class _ValueInput extends StatelessWidget {
             }).toList(),
           ),
         ],
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DateTime format selector
+// ---------------------------------------------------------------------------
+
+class _DateTimeFormatSelector extends StatelessWidget {
+  final DateTimeFormat selected;
+  final ValueChanged<DateTimeFormat> onChanged;
+
+  const _DateTimeFormatSelector({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 4,
+          children: DateTimeFormat.values.map((fmt) {
+            final isSelected = fmt == selected;
+            return GestureDetector(
+              onTap: () => onChanged(fmt),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.accent.withValues(alpha: 0.18)
+                      : Colors.transparent,
+                  borderRadius:
+                      BorderRadius.circular(AppDimensions.radiusS),
+                  border: Border.all(
+                    color: isSelected ? AppColors.accent : AppColors.border,
+                  ),
+                ),
+                child: Text(
+                  fmt.label,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    color: isSelected
+                        ? AppColors.accent
+                        : AppColors.textSecondary,
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${selected.description}  •  e.g. ${selected.example}',
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 10,
+            color: AppColors.textMuted,
+          ),
+        ),
       ],
     );
   }

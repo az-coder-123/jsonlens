@@ -85,6 +85,7 @@ abstract final class JsonObjectFilter {
       ValueType.boolean => _checkBoolean(raw, filter),
       ValueType.number => _checkNumber(raw, filter),
       ValueType.string => _checkString(raw, filter),
+      ValueType.datetime => _checkDateTime(raw, filter),
       ValueType.any => _checkAny(raw, filter),
     };
   }
@@ -122,6 +123,43 @@ abstract final class JsonObjectFilter {
     if (raw is! String) return false;
     return _compareStrings(raw, filter.value, filter.operator,
         caseSensitive: filter.caseSensitive);
+  }
+
+  /// DateTime matching — parses both sides according to [filter.dateTimeFormat]
+  /// then compares temporally using the full numeric operator set.
+  static bool _checkDateTime(dynamic raw, SearchFilter filter) {
+    final actual = _parseDateTime(raw, filter.dateTimeFormat);
+    final expected = _parseDateTime(filter.value, filter.dateTimeFormat);
+    if (actual == null || expected == null) return false;
+    return switch (filter.operator) {
+      FilterOperator.equals => actual == expected,
+      FilterOperator.notEquals => actual != expected,
+      FilterOperator.greaterThan => actual.isAfter(expected),
+      FilterOperator.lessThan => actual.isBefore(expected),
+      FilterOperator.greaterOrEqual => !actual.isBefore(expected),
+      FilterOperator.lessOrEqual => !actual.isAfter(expected),
+      _ => false,
+    };
+  }
+
+  /// Parses [raw] as a [DateTime] according to [format].
+  ///
+  /// Returns `null` when [raw] cannot be parsed.
+  static DateTime? _parseDateTime(dynamic raw, DateTimeFormat format) {
+    if (raw == null) return null;
+    final str = raw.toString().trim();
+    switch (format) {
+      case DateTimeFormat.iso8601:
+        return DateTime.tryParse(str);
+      case DateTimeFormat.timestamp:
+        final n = double.tryParse(str);
+        if (n == null) return null;
+        return DateTime.fromMillisecondsSinceEpoch((n * 1000).toInt());
+      case DateTimeFormat.timestampMs:
+        final n = double.tryParse(str);
+        if (n == null) return null;
+        return DateTime.fromMillisecondsSinceEpoch(n.toInt());
+    }
   }
 
   /// Loose matching — converts [raw] to string regardless of type.
